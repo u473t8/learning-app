@@ -1,1 +1,24 @@
-{"antreiben" "торопить, форсировать", "einzig" "единственный", "der Umstand" "oбстоятельство", "die Weise" "способ, манера", "trauen" "осмелиться", "verbringen" "проводить, коротать", "übrig" "оставшийся, остальной", "die Ausdauer" "выносливость, выдержка"}
+[{:created-at 1739134194017,
+  :last-reviewed nil,
+  :translation "обстоятельство",
+  :word "der Umstand",
+  :reviews 0,
+  :successful-reviews 0}
+ {:created-at 1739134349829,
+  :last-reviewed nil,
+  :translation "единственный",
+  :word "einzig",
+  :reviews 0,
+  :successful-reviews 0}
+ {:created-at 1739134471288,
+  :last-reviewed nil,
+  :translation "выносливость",
+  :word "die Ausdauer",
+  :reviews 0,
+  :successful-reviews 0}
+ {:created-at 1739135278422,
+  :last-reviewed nil,
+  :translation "корнеплод",
+  :word "die Rübe",
+  :reviews 0,
+  :successful-reviews 0}]

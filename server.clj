@@ -18,14 +18,15 @@
 
 (defn normalize-text
   [text]
-  (some-> text
-          (str/trim)
-          (str/lower-case)
-          (str/replace #"\s+" " ")
-          (str/replace #"ä" "ae")
-          (str/replace #"ö" "oe")
-          (str/replace #"ü" "ue")
-          (str/replace #"ß" "ss")))
+  (-> text
+      (or "")
+      (str/trim)
+      (str/lower-case)
+      (str/replace #"\s+" " ")
+      (str/replace #"ä" "ae")
+      (str/replace #"ö" "oe")
+      (str/replace #"ü" "ue")
+      (str/replace #"ß" "ss")))
 
 
 (defn prozent->color
@@ -38,16 +39,62 @@
 ;; DB
 ;;
 
-
-(defn learning-pairs
+(defn vocabulary
   []
   (edn/read-string (slurp "learning-pairs.edn")))
 
 
 (defn add-learning-pair!
-  [learning-pair]
-  (let [learning-pairs (conj (learning-pairs) learning-pair)]
+  [value translation]
+  (let [learning-pair {:created-at (System/currentTimeMillis)
+                       :last-reviewed nil
+                       :translation translation
+                       :word value
+                       :reviews 0
+                       :successful-reviews 0}
+        learning-pairs ((fnil conj []) (vocabulary) learning-pair)]
     (pprint/pprint learning-pairs (io/writer "learning-pairs.edn"))))
+
+
+(defn word-value
+  [learning-pair]
+  (:word learning-pair))
+
+
+(defn word-translation
+  [learning-pair]
+  (:translation learning-pair))
+
+
+(defn search-word
+  [search]
+  (if search
+    (filter
+     (fn [learning-pair]
+       (or
+        (str/includes? (normalize-text (word-value learning-pair)) (normalize-text search))
+        (str/includes? (normalize-text (word-translation learning-pair)) (normalize-text search))))
+     (vocabulary))
+    (vocabulary)))
+
+
+(defn retention-level
+  [learning-pair]
+  (let [{:keys [reviews successful-reviews]} learning-pair]
+    (if (zero? reviews)
+      0
+      (/ (* 100.0 successful-reviews) reviews))))
+
+
+(defn last-reviewed
+  [learning-pair]
+  (:last-reviewed learning-pair))
+
+
+(defn learning-pairs
+  [session-length]
+  ())
+
 
 
 ;;
@@ -65,7 +112,7 @@
 
 (defn start-learning-session!
   []
-  (swap! session-state assoc :challenges (learning-pairs)))
+  (swap! session-state assoc :challenges (vocabulary)))
 
 
 (defn quit-learning-session! 
@@ -134,106 +181,63 @@
     content]])
 
 (defn words-list
-  []
-  [:section
-   {:hx-swap-oob "true"
-    :id "words-list"
-    :style {:padding "40px 0"
-            :flex 1
-            :gap "16px"
-            :display "flex"
-            :flex-direction "column"
-            :overflow "hidden"
-            :width "100%"}}
-   [:div.words-summary
-    [:div.words-summary__words-count
-     (let [words-count (count (learning-pairs))]
-       (str
-        words-count
-        " "
-        (case (mod words-count 10)
-          1 "cлово"
-          (2 3 4) "слова"
-          "cлов")))]
-    [:form.dropdown-menu.words-summary__words-selector
-     {:hx-on:change "htmx.find('.dropdown-menu__selector-label').textContent = event.srcElement.dataset.label"}
-     [:div.dropdown-menu__selector
-      {:hx-on:focusin "htmx.find('fieldset').style.setProperty('display', 'block')"
-       :hx-on:focusout "htmx.find('fieldset').style.setProperty('display', 'none')"
-       :tabindex -1}
-      [:div.dropdown-menu__selector-label
-       "Сначала неизученные"]
-      [:svg.dropdown-menu__selector-arrow
-       {:viewBox "0 0 15 9"}
-       [:path
-        {:d "M0.43934 0.43934C1.02513 -0.146447 1.97487 -0.146447 2.56066 0.43934L7.5 5.37868L12.4393 0.43934C13.0251 -0.146447 13.9749 -0.146447 14.5607 0.43934C15.1464 1.02513 15.1464 1.97487 14.5607 2.56066L8.56066 8.56066C7.97487 9.14645 7.02513 9.14645 6.43934 8.56066L0.43934 2.56066C-0.146447 1.97487 -0.146447 1.02513 0.43934 0.43934Z"
-         :fill "currentColor"}]
-       "Сначала неизученные"]
-      [:fieldset.list.dropdown-menu__options-list
-       [:label.list-item.dropdown-menu__option
-        [:input
-         {:checked true
-          :data-label "Сначала изученные"
-          :id "well-learned-first"
-          :name "words-selector"
-          :type "radio"
-          :value "well-learned-first"}]
-        [:b "Cначала изученные"]]
-       [:label.list-item.dropdown-menu__option
-        [:input
-         {:data-label "Сначала неизученные"
-          :id "poor-learned-first"
-          :name "words-selector"
-          :type "radio"
-          :value "poor-learned-first"}]
-        [:b "Cначала неизученные"]]]]]]
-   [:form
-    {:style {:position "relative"}}
-    [:span.input__search-icon
-     {:style {:position "absolute"}}]
-    [:input.new-word-form__input
-     {:autocomplete "off"
-      :style {:padding-left "40px"}
-      :name "search"}]]
-   [:ul.words-list.list
-    (for [item (sort-by key (learning-pairs))]
-      [:li.list-item.word-item
-       [:div
-        [:h3
-         (key item)]
-        [:p.word-item__translation
-         (val item)]]
-       [:div.word-item__learning-progress
-        {:style {:background-color (prozent->color nil)}}]])
-    [:li.list-item.word-item.word-item--add-new-word
-     [:b
-      "Загрузить больше"]
-     [:img
-      {:src "arrow-down.svg"}]]]])
+  [& {:keys [search]}]
+  (when-let [learning-pairs (seq (search-word search))]
+    [:ul.words-list.list
+     {:hx-swap-oob "true"
+      :id "words-list"}
+     (for [learning-pair (sort-by retention-level (take 10 learning-pairs))]
+       [:li.list-item.word-item
+        [:div
+         [:h3
+          (word-value learning-pair)]
+         [:p.word-item__translation
+          (word-translation learning-pair)]]
+        [:div.word-item__learning-progress
+         {:style {:background-color (prozent->color (retention-level learning-pair))}}]])
+     (when (seq (drop 10 learning-pairs))
+       [:li.list-item.word-item.word-item--add-new-word
+        [:b
+         "Загрузить больше"]
+        [:span.arrow-down-icon]])]))
+
 
 (defn home
   []
   [:div.home
-   [:section
-    {:style {:padding "0 0 40px 0"
-             :margin "0 auto"
-             :max-width "420px"}}
-    [:button#submit-button.submit-button
-     {:hx-get "/learning-session"
-      :type "submit"}
+   [:div
+    {:style {:padding "24px"}}
+    [:button.big-button.green-button
+     {:hx-get "/learning-session"}
      "НАЧАТЬ"]]
+   [:section
+    {:style {:flex 1
+             :display "flex"
+             :flex-direction "column"
+             :overflow "hidden"
+             :width "100%"}}
+    [:form
+     {:style {:position "relative"
+              :margin "0 24px 12px 24px"}}
+     [:span.input__search-icon
+      {:style {:position "absolute"}}]
+     [:input.new-word-form__input
+      {:autocomplete "off"
+       :style {:padding-left "40px"}
+       :hx-post "/search"
+       :placeholder "Поиск слова"
+       :hx-target "#words-list"
+       :hx-trigger "input changed delay:500ms, keyup[key=='Enter']"
+       :name "search"}]]
+    [:hr
+     {:style {:width "100%", :margin 0}}]
+    (words-list)]
    [:hr
-    {:style {:margin 0
-             :width "100%"}}]
-   (words-list)
-   [:hr
-    {:style {:margin 0
-             :width "100%"}}]
+    {:style {:width "100%", :margin 0}}]
    [:form.new-word-form
     {:hx-on::after-request "if(event.detail.successful) {this.reset(); htmx.find('#new-word-value').focus()}"
      :hx-post "/learning-pair"
-     :hx-swap "none"
-     :hx-trigger "submit, change from:#new-word-translation"}
+     :hx-swap "none"}
     [:label.new-word-form__label
      "Новое слово"
      [:input.new-word-form__input
@@ -246,7 +250,10 @@
      [:input.new-word-form__input
       {:autocomplete "off"
        :id "new-word-translation"
-       :name "translation"}]]]])
+       :name "translation"}]]
+    [:button.big-button.blue-button
+     {:type "submit"}
+     "ДОБАВИТЬ"]]])
 
 
 (defn learning-session
@@ -264,10 +271,7 @@
       [:button.cancel-button
        {:hx-trigger "click"
         :hx-post "/exit-session"}
-       [:img
-        {:style {:height "18px"
-                 :width "18px"}
-         :src "close-icon.svg"}]]
+       [:span.close-icon]]
       [:div
        {:id "progress-bar"
         :style {"--web-ui_progress-bar-color" "rgb(var(--color-owl))"
@@ -305,13 +309,9 @@
 (defn home-routes [{:keys [:request-method :uri] :as req}]
   (println [request-method uri])
   (case [request-method uri]
-    [:get "/close-icon.svg"] {:body (slurp "close-icon.svg")
-                              :headers {"Content-Type" "image/svg+xml"}
-                              :status "200"}
-    [:get "/arrow-down.svg"] {:body (slurp "arrow-down.svg")
-                              :headers {"Content-Type" "image/svg+xml"}
-                              :status "200"}
-
+    [:get "/icons.svg"] {:body (slurp "icons.svg")
+                         :headers {"Content-Type" "image/svg+xml"}
+                         :status "200"}
     [:get "/styles.css"] {:body (slurp "styles.css")
                           :headers {"Content-Type" "text/plain"}
                           :status "200"}
@@ -401,13 +401,15 @@
                                              :name "translation"}]))
                                   :status 400}
                                  (do
-                                   (add-learning-pair! [value translation])
+                                   (add-learning-pair! value translation)
                                    {:body (words-list)
                                    :status 200})))
     [:post "/exit-session"] (do
                               (quit-learning-session!)
                               {:headers {"HX-Location" "/"
-                                         "HX-Push-Url" "true"}})))
+                                         "HX-Push-Url" "true"}})
+    [:post "/search"] {:body (words-list :search (-> req :params :search))
+                       :status 200}))
 
 
 
