@@ -1,0 +1,3 @@
+{:deps {ring/ring-core {:mvn/version "1.13.0"}
+        philoskim/debux {:mvn/version "0.9.1"}
+        metosin/reitit {:mvn/version "0.8.0-alpha1"}}}
