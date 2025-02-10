@@ -1,5 +1,6 @@
 (require '[clojure.string :as str]
          '[clojure.edn :as edn]
+         '[clojure.math :as math]
          '[org.httpkit.server :as srv]
          '[hiccup2.core :as hiccup]
          '[debux.core]
@@ -15,6 +16,12 @@
 ;;
 ;; Helpers
 ;;
+
+(defn current-time
+  "Returns current unix time"
+  []
+  (/ (System/currentTimeMillis) 1000))
+
 
 (defn normalize-text
   [text]
@@ -39,21 +46,29 @@
 ;; DB
 ;;
 
-(defn vocabulary
+(defonce vocabulary (atom nil))
+
+
+(defn read-vocabulary
   []
   (edn/read-string (slurp "learning-pairs.edn")))
 
 
+(defn save-vocabulary!
+  [vocabulary]
+  (pprint/pprint vocabulary (io/writer "vocabulary.edn")))
+
+
 (defn add-learning-pair!
   [value translation]
-  (let [learning-pair {:created-at (System/currentTimeMillis)
-                       :last-reviewed nil
+  (let [current-time (current-time)
+        learning-pair {:created-at current-time
+                       :last-reviewed current-time
+                       :forgetting-rate 0.01 ;; approx 95% forgetting after 5 min
                        :translation translation
                        :word value
-                       :reviews 0
-                       :successful-reviews 0}
-        learning-pairs ((fnil conj []) (vocabulary) learning-pair)]
-    (pprint/pprint learning-pairs (io/writer "learning-pairs.edn"))))
+                       :reviews []}]
+    (swap! vocabulary assoc  value learning-pair)))
 
 
 (defn word-value
@@ -74,16 +89,15 @@
        (or
         (str/includes? (normalize-text (word-value learning-pair)) (normalize-text search))
         (str/includes? (normalize-text (word-translation learning-pair)) (normalize-text search))))
-     (vocabulary))
-    (vocabulary)))
+     @vocabulary)
+    @vocabulary))
 
 
 (defn retention-level
   [learning-pair]
-  (let [{:keys [reviews successful-reviews]} learning-pair]
-    (if (zero? reviews)
-      0
-      (/ (* 100.0 successful-reviews) reviews))))
+  (let [{:keys [last-reviewed forgetting-rate]} learning-pair
+        time-since-review (- (current-time) last-reviewed)]
+    (math/exp (- (* forgetting-rate time-since-review)))))
 
 
 (defn last-reviewed
@@ -91,10 +105,16 @@
   (:last-reviewed learning-pair))
 
 
-(defn learning-pairs
-  [session-length]
-  ())
-
+(defn update-forgetting-rate!
+  [word retained?]
+  (swap! vocabulary update word (fn [word]
+                                  (-> word
+                                      (assoc :last-reviewed (current-time))
+                                      (update :reviews conj retained?)
+                                      (update :forgetting-rate (fn [forgetting-rate]
+                                                                 (if retained?
+                                                                   (* 0.95 forgetting-rate)
+                                                                   (* 1.1 forgetting-rate))))))))
 
 
 ;;
@@ -112,10 +132,13 @@
 
 (defn start-learning-session!
   []
-  (swap! session-state assoc :challenges (vocabulary)))
+  (let [challenges (->> (vals @vocabulary)
+                        (sort-by retention-level)
+                        (take 10))]
+    (swap! session-state assoc :challenges challenges)))
 
 
-(defn quit-learning-session! 
+(defn quit-learning-session!
   []
   (reset! session-state initial-session-state))
 
@@ -137,11 +160,20 @@
 
 (defn next-challenge!
   []
-  (when-let [challenge (rand-nth
-                        (seq
-                         (reduce dissoc (challenges) (learned-words))))]
-    (swap! session-state assoc :current-word (key challenge))
-    (val challenge)))
+  (when-let [learning-pairs (rand-nth
+                             (seq
+                              (reduce dissoc (challenges) (learned-words))))]
+    (swap! session-state assoc :current-word (word-value learning-pairs))
+    (word-translation learning-pairs)))
+
+
+(defn review-user-input
+  [user-input]
+  (let [current-word (current-word)
+        retained? (= (normalize-text user-input) (normalize-text current-word))]
+    (update-forgetting-rate! current-word retained?)
+    (when retained?
+      (swap! session-state update :learned-words conj (current-word)))))
 
 
 (defn learn-current-word! []
@@ -332,27 +364,25 @@
                                    {:body (page (learning-session))
                                     :status 200}))
 
+    ;; TODO: should be "/review"
     [:post "/submit"] (let [user-input (-> req :params :user-input)]
-                        (if (submission-valid? user-input)
-                          (do
-                            (learn-current-word!)
-                            {:body (let [next-challenge #d/dbg (next-challenge!)]
-                                     (list
-                                      [:div#progress-bar-value.progress-bar-value
-                                       {:hx-swap-oob "true"
-                                        :id "progress-bar-value"
-                                        :style {"--__internal__progress-bar-value" (current-progress-prozent)}}]
-                                      (if (some? next-challenge)
-                                        [:div#challenge-text.text-plate
-                                         {:hx-swap-oob "true"
-                                          :hx-on::load "htmx.find('#user-input').value = ''"}
-                                         next-challenge]
-                                        [:button#submit-button.submit-button
-                                         {:hx-post "/exit-session"
-                                          :hx-on::load "htmx.find('#user-input').disabled = true"
-                                          :hx-swap-oob "true"}
-                                         "ЗАКОНЧИТЬ"])))
-                             :status 200})
+                        (if (some? (review-user-input user-input))
+                          {:body (list
+                                  [:div#progress-bar-value.progress-bar-value
+                                   {:hx-swap-oob "true"
+                                    :id "progress-bar-value"
+                                    :style {"--__internal__progress-bar-value" (current-progress-prozent)}}]
+                                  (if-some [next-challenge (next-challenge!)]
+                                    [:div#challenge-text.text-plate
+                                     {:hx-swap-oob "true"
+                                      :hx-on::load "htmx.find('#user-input').value = ''"}
+                                     next-challenge]
+                                    [:button#submit-button.submit-button
+                                     {:hx-post "/exit-session"
+                                      :hx-on::load "htmx.find('#user-input').disabled = true"
+                                      :hx-swap-oob "true"}
+                                     "ЗАКОНЧИТЬ"]))
+                           :status 200}
                           {:body (list
                                   [:div#session-footer.session-footer.session-footer--error
                                    {:hx-swap-oob "outerHTML"
@@ -403,7 +433,7 @@
                                  (do
                                    (add-learning-pair! value translation)
                                    {:body (words-list)
-                                   :status 200})))
+                                    :status 200})))
     [:post "/exit-session"] (do
                               (quit-learning-session!)
                               {:headers {"HX-Location" "/"
@@ -447,6 +477,10 @@
 
 
 (let [url (str "http://localhost:" port "/")]
+  (reset! vocabulary (read-vocabulary))
+  (add-watch vocabulary :save-on-modify (fn [_ _ current-vocabulary new-vocabulary]
+                                          (when (not= current-vocabulary new-vocabulary)
+                                            (save-vocabulary! new-vocabulary))))
   (stop-server!)
   (start-server! #'app port)
   (println "serving" url))
