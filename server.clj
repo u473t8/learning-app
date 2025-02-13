@@ -20,7 +20,7 @@
 (defn current-time
   "Returns current unix time"
   []
-  (/ (System/currentTimeMillis) 1000))
+  (quot (System/currentTimeMillis) 1000))
 
 
 (defn normalize-text
@@ -46,17 +46,25 @@
 ;; DB
 ;;
 
-(defonce vocabulary (atom nil))
+(def db-file "vocabulary.edn")
 
 
-(defn read-vocabulary
+(defonce learning-pairs-indexed (atom nil))
+
+
+(defn read-db
   []
-  (edn/read-string (slurp "learning-pairs.edn")))
+  (edn/read-string (slurp db-file)))
 
 
-(defn save-vocabulary!
+(defn save-db!
   [vocabulary]
-  (pprint/pprint vocabulary (io/writer "vocabulary.edn")))
+  (pprint/pprint vocabulary (io/writer db-file)))
+
+
+(defn learning-pairs
+  []
+  (vals @learning-pairs-indexed))
 
 
 (defn add-learning-pair!
@@ -68,7 +76,13 @@
                        :translation translation
                        :word value
                        :reviews []}]
-    (swap! vocabulary assoc  value learning-pair)))
+    (swap! learning-pairs-indexed assoc  value learning-pair)
+    learning-pair))
+
+
+(defn remove-learning-pair!
+  [value]
+  (swap! learning-pairs-indexed dissoc value))
 
 
 (defn word-value
@@ -83,21 +97,21 @@
 
 (defn search-word
   [search]
-  (if search
+  (cond->> (learning-pairs)
+    (some? search)
     (filter
      (fn [learning-pair]
        (or
         (str/includes? (normalize-text (word-value learning-pair)) (normalize-text search))
-        (str/includes? (normalize-text (word-translation learning-pair)) (normalize-text search))))
-     @vocabulary)
-    @vocabulary))
+        (str/includes? (normalize-text (word-translation learning-pair)) (normalize-text search)))))))
 
 
 (defn retention-level
   [learning-pair]
   (let [{:keys [last-reviewed forgetting-rate]} learning-pair
         time-since-review (- (current-time) last-reviewed)]
-    (math/exp (- (* forgetting-rate time-since-review)))))
+    (* 100 (math/exp (- (* forgetting-rate time-since-review))))))
+
 
 
 (defn last-reviewed
@@ -105,16 +119,25 @@
   (:last-reviewed learning-pair))
 
 
+#_
+(defn forgetting-rate-modifier
+  [learning-pair retained?]
+  (let [{:keys [last-reviewed forgetting-rate]} learning-pair
+        time-since-review (- (current-time) last-reviewed)
+        rate-reward (math/exp (- (/ (* 3 time-since-review) (* 60 60 24 365))))
+        rate-penalty (- 1 (math/exp (- (/ (* 3 time-since-review) (* 60 60 24 365)))))]
+    (* 100 (math/exp (- (* forgetting-rate time-since-review))))))
+
+
 (defn update-forgetting-rate!
   [word retained?]
-  (swap! vocabulary update word (fn [word]
-                                  (-> word
-                                      (assoc :last-reviewed (current-time))
-                                      (update :reviews conj retained?)
-                                      (update :forgetting-rate (fn [forgetting-rate]
-                                                                 (if retained?
-                                                                   (* 0.95 forgetting-rate)
-                                                                   (* 1.1 forgetting-rate))))))))
+  (swap! learning-pairs-indexed update word #(-> %
+                                                (assoc :last-reviewed (current-time))
+                                                (update :reviews conj retained?)
+                                                (update :forgetting-rate (fn [forgetting-rate]
+                                                                           (if retained?
+                                                                             (* 0.9 forgetting-rate)
+                                                                             (* 1.2 forgetting-rate)))))))
 
 
 ;;
@@ -132,7 +155,7 @@
 
 (defn start-learning-session!
   []
-  (let [challenges (->> (vals @vocabulary)
+  (let [challenges (->> (learning-pairs)
                         (sort-by retention-level)
                         (take 10))]
     (swap! session-state assoc :challenges challenges)))
@@ -160,29 +183,31 @@
 
 (defn next-challenge!
   []
-  (when-let [learning-pairs (rand-nth
-                             (seq
-                              (reduce dissoc (challenges) (learned-words))))]
+  (when-let [learning-pairs (rand-nth (seq (challenges)))]
     (swap! session-state assoc :current-word (word-value learning-pairs))
     (word-translation learning-pairs)))
 
 
-(defn review-user-input
+(defn has-next-challenge?
+  []
+  (seq (challenges)))
+
+
+(defn learn-current-word!
+  []
+  (let [current-word (current-word)]
+    (swap! session-state update :challenges (fn [challenges]
+                                              (remove #(= (:word %) current-word) challenges)))
+    (swap! session-state update :learned-words conj current-word)))
+
+
+(defn review-user-input!
   [user-input]
   (let [current-word (current-word)
         retained? (= (normalize-text user-input) (normalize-text current-word))]
     (update-forgetting-rate! current-word retained?)
     (when retained?
-      (swap! session-state update :learned-words conj (current-word)))))
-
-
-(defn learn-current-word! []
-  (swap! session-state update :learned-words conj (current-word)))
-
-
-(defn submission-valid?
-  [user-input]
-  (= (normalize-text user-input) (normalize-text (current-word))))
+      (learn-current-word!))))
 
 
 (defn current-progress-prozent []
@@ -212,26 +237,45 @@
    [:body
     content]])
 
+
+(defn words-list-item
+  [{:keys [word-value word-translation retention-level]}]
+  [:li.list-item.word-item
+   {:id word-value
+    :hx-target "this"}
+   [:form
+    {:hx-put "/learning-pair"
+     :hx-trigger "change from:find (input)"
+     :hx-swap "outerHTML"}
+    [:input.word-item__value
+     {:name "value"
+      :value word-value}]
+    [:input.word-item__translation
+     {:name "translation"
+      :value word-translation}]]
+   [:div.word-item__learning-progress
+    {:style {:background-color (prozent->color retention-level)}}]])
+
+
 (defn words-list
   [& {:keys [search]}]
-  (when-let [learning-pairs (seq (search-word search))]
-    [:ul.words-list.list
-     {:hx-swap-oob "true"
-      :id "words-list"}
-     (for [learning-pair (sort-by retention-level (take 10 learning-pairs))]
-       [:li.list-item.word-item
-        [:div
-         [:h3
-          (word-value learning-pair)]
-         [:p.word-item__translation
-          (word-translation learning-pair)]]
-        [:div.word-item__learning-progress
-         {:style {:background-color (prozent->color (retention-level learning-pair))}}]])
-     (when (seq (drop 10 learning-pairs))
-       [:li.list-item.word-item.word-item--add-new-word
-        [:b
-         "Загрузить больше"]
-        [:span.arrow-down-icon]])]))
+  [:ul.words-list.list
+   {:id "words-list"}
+   (when-let [learning-pairs (search-word search)]
+     (list
+      (for [learning-pair (take 10 (sort-by retention-level learning-pairs))]
+        (let [word-value (word-value learning-pair)
+              retention-level (retention-level learning-pair)
+              word-translation (word-translation learning-pair)]
+          (words-list-item
+           {:word-value word-value
+            :word-translation word-translation
+            :retention-level retention-level})))
+      (when (seq (drop 10 learning-pairs))
+        [:li.list-item.word-item.word-item--add-new-word
+         [:b
+          "Загрузить больше"]
+         [:span.arrow-down-icon]])))])
 
 
 (defn home
@@ -259,6 +303,7 @@
        :hx-post "/search"
        :placeholder "Поиск слова"
        :hx-target "#words-list"
+       :hx-swap "outerHTML"
        :hx-trigger "input changed delay:500ms, keyup[key=='Enter']"
        :name "search"}]]
     [:hr
@@ -269,7 +314,8 @@
    [:form.new-word-form
     {:hx-on::after-request "if(event.detail.successful) {this.reset(); htmx.find('#new-word-value').focus()}"
      :hx-post "/learning-pair"
-     :hx-swap "none"}
+     :hx-swap "outerHTML"
+     :hx-target "#words-list"}
     [:label.new-word-form__label
      "Новое слово"
      [:input.new-word-form__input
@@ -288,55 +334,73 @@
      "ДОБАВИТЬ"]]])
 
 
+(defn learning-session-progress
+  [progress]
+  [:div.progress-bar-value
+   {:id "progress-bar"
+    :hx-get "/learning-session/progress"
+    :hx-swap "outerHTML"
+    :hx-trigger "next-challenge from:body"}
+   {:style {"--__internal__progress-bar-value" (str progress "%")}}])
+
+
+(defn challenge-text
+  []
+  [:div.text-plate
+   {:id "challenge-text"
+    :hx-get "/learning-session/challenge"
+    :hx-swap "outerHTML"
+    :hx-trigger "next-challenge from:body"}
+   (next-challenge!)])
+
+
+(defn finish-session-button
+  []
+  [:button.big-button.green-button
+   {:autofocus "true"
+    :hx-post "/exit-session"}
+   "ЗАКОНЧИТЬ"])
+
+
 (defn learning-session
   []
-  (list
-   [:form#session
-    {:hx-post "/submit"
-     :hx-swap "none"}
-    [:div#session-header
-     [:div
-      {:style {:align-items "center"
-               :display "grid"
-               :grid-template-columns "min-content 1fr"
-               :grid-gap "24px"}}
-      [:button.cancel-button
-       {:hx-trigger "click"
-        :hx-post "/exit-session"}
-       [:span.close-icon]]
-      [:div
-       {:id "progress-bar"
-        :style {"--web-ui_progress-bar-color" "rgb(var(--color-owl))"
-                "--web-ui_progress-bar-shine-height" "3px"
-                "--__internal__progress-bar-height" "16px"
-                "--__internal__progress-bar-inner-value" "0%"}}
-       [:div.progress-bar
-        [:div.progress-bar-value
-         {:id "progress-bar-value"
-          :style {"--__internal__progress-bar-value" "0%"}}]]]]]
-    [:div#session-body
-     [:div.challenge
-      [:div.challenge-text
-       [:div.text-plate
-        {:id "challenge-text"}
-        (next-challenge!)]]
-      [:div
-       {:style {:display "flex"
-                :align-items "end"}}
-       [:textarea.user-input
-        {:autocapitalize "off"
-         :autocomplete "off"
-         :autocorrect "off"
-         :id "user-input"
-         :lang "de"
-         :name "user-input"
-         :placeholder "Напишите на немецком"
-         :spellcheck "false"}]]]]
-    [:div#session-footer.session-footer
-     [:button#submit-button.submit-button
-      {:type "submit"}
-      "ПРОВЕРИТЬ"]]]))
-
+  [:div.learning-session
+   [:div.learning-session__header
+    [:button.cancel-button
+     {:hx-trigger "click"
+      :hx-post "/exit-session"}
+     [:span.close-icon]]
+    [:div.progress-bar
+     (learning-session-progress 0)]]
+   [:form.learning-session__body
+    {:hx-post "/learning-session/challenge"
+     :hx-on:next-challenge "this.reset()"
+     :hx-target "#learning-session-footer"
+     :hx-trigger "submit, keydown[key=='Enter'] from:#user-input"
+     :hx-swap "none"
+     :id "challenge-form"}
+    [:div.learning-session__challenge
+     (challenge-text)]
+    [:textarea.learning-session__user-input
+     {:autocapitalize "off"
+      :autocomplete "off"
+      :autocorrect "off"
+      :autofocus "true"
+      :hx-on:challenge-over "this.disabled = true"
+      :id "user-input"
+      :lang "de"
+      :name "user-input"
+      :placeholder "Напишите на немецком"
+      :spellcheck "false"}]]
+   [:div.learning-session__footer
+    {:id "learning-session-footer"}
+    [:button.big-button.green-button
+     {:form "challenge-form"
+      :hx-delete "/learning-session"
+      :hx-on:challenge-over "this.disabled = true"
+      :hx-trigger "challenge-over from:body"
+      :type "submit"}
+     "ПРОВЕРИТЬ"]]])
 
 (defn home-routes [{:keys [:request-method :uri] :as req}]
   (println [request-method uri])
@@ -364,38 +428,32 @@
                                    {:body (page (learning-session))
                                     :status 200}))
 
-    ;; TODO: should be "/review"
-    [:post "/submit"] (let [user-input (-> req :params :user-input)]
-                        (if (some? (review-user-input user-input))
-                          {:body (list
-                                  [:div#progress-bar-value.progress-bar-value
-                                   {:hx-swap-oob "true"
-                                    :id "progress-bar-value"
-                                    :style {"--__internal__progress-bar-value" (current-progress-prozent)}}]
-                                  (if-some [next-challenge (next-challenge!)]
-                                    [:div#challenge-text.text-plate
-                                     {:hx-swap-oob "true"
-                                      :hx-on::load "htmx.find('#user-input').value = ''"}
-                                     next-challenge]
-                                    [:button#submit-button.submit-button
-                                     {:hx-post "/exit-session"
-                                      :hx-on::load "htmx.find('#user-input').disabled = true"
-                                      :hx-swap-oob "true"}
-                                     "ЗАКОНЧИТЬ"]))
-                           :status 200}
-                          {:body (list
-                                  [:div#session-footer.session-footer.session-footer--error
-                                   {:hx-swap-oob "outerHTML"
-                                    :hx-on::load "htmx.find('#user-input').disabled = true"}
-                                   [:div.correct-answer
-                                    [:h2.correct-answer__header
-                                     "Правильный ответ:"]
-                                    [:div.correct-answer__body
-                                     (current-word)]]
-                                   [:button#submit-button.submit-button.submit-button-error
-                                    {:hx-post "/next-challenge"}
-                                    "ДАЛЕЕ"]])
-                           :status 400}))
+    [:get "/learning-session/progress"] {:body (learning-session-progress
+                                                (current-progress-prozent))
+                                         :status 200}
+
+    [:get "/learning-session/challenge"] {:body (challenge-text)
+                                          :status 200}
+    [:post "/learning-session/challenge"] (let [user-input (-> req :params :user-input)]
+                                            (if (some? (review-user-input! user-input))
+                                              {:headers (if (has-next-challenge?)
+                                                          {"HX-Trigger" "next-challenge"}
+                                                          {"HX-Trigger" "challenge-over"})
+                                               :status 200}
+                                              {:body (list
+                                                      [:div.learning-session__footer.learning-session-footer--error
+                                                       {:hx-on::load "htmx.find('#user-input').disabled = true"}
+                                                       [:div.correct-answer
+                                                        [:h2.correct-answer__header
+                                                         "Правильный ответ:"]
+                                                        [:div.correct-answer__body
+                                                         (current-word)]]
+                                                       [:button#submit-button.big-button.red-button
+                                                        {:hx-post "/next-challenge"
+                                                         :autofocus "true"}
+                                                        "ДАЛЕЕ"]])
+                                               :headers {"HX-Trigger" "challenge-over"}
+                                               :status 400}))
     [:post "/next-challenge"] {:body (list
                                       [:div
                                        {:hx-swap-oob "textContent"
@@ -406,7 +464,7 @@
                                         :hx-on::load "htmx.find('#user-input').disabled = false;
                                                       htmx.find('#user-input').value = '';
                                                       htmx.find('#user-input').focus()"}
-                                       [:button#submit-button.submit-button
+                                       [:button#submit-button.big-button.green-button
                                         {:type "submit"}
                                         "ПРОВЕРИТЬ"]])
                                :status 200}
@@ -434,14 +492,21 @@
                                    (add-learning-pair! value translation)
                                    {:body (words-list)
                                     :status 200})))
+    [:put "/learning-pair"] {:status 200
+                             :body (let [{:keys [value translation]} (:params req)
+                                         original-value (get-in req [:headers "hx-target"])]
+                                     (remove-learning-pair! original-value)
+                                     (add-learning-pair! value translation)
+                                     (words-list-item
+                                      {:word-value value
+                                       :word-translation translation
+                                       :retention-level 100}))}
     [:post "/exit-session"] (do
                               (quit-learning-session!)
                               {:headers {"HX-Location" "/"
                                          "HX-Push-Url" "true"}})
-    [:post "/search"] {:body (words-list :search (-> req :params :search))
+    [:post "/search"] {:body (words-list {:search (-> req :params :search)})
                        :status 200}))
-
-
 
 
 (defn wrap-hiccup
@@ -477,10 +542,10 @@
 
 
 (let [url (str "http://localhost:" port "/")]
-  (reset! vocabulary (read-vocabulary))
-  (add-watch vocabulary :save-on-modify (fn [_ _ current-vocabulary new-vocabulary]
+  (reset! learning-pairs-indexed (read-db))
+  (add-watch learning-pairs-indexed :save-on-modify (fn [_ _ current-vocabulary new-vocabulary]
                                           (when (not= current-vocabulary new-vocabulary)
-                                            (save-vocabulary! new-vocabulary))))
+                                            (save-db! new-vocabulary))))
   (stop-server!)
   (start-server! #'app port)
   (println "serving" url))

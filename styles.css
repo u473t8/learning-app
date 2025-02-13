@@ -351,6 +351,10 @@ textarea {
     }
 }
 
+form {
+    margin: 0;
+}
+
 input,
 textarea {
     -webkit-user-select: auto;
@@ -436,12 +440,16 @@ h2 {
     margin: 0 0 25px
 }
 
-h3 {
+.h3 {
+    display: block;
+}
+
+h3, .h3 {
     font-size: 19px;
     font-weight: 700
 }
 
-h3,
+h3, .h3,
 h4 {
     margin: 0 0 10px
 }
@@ -475,8 +483,12 @@ hr {
     margin: 40px 0
 }
 
-p {
+p, .p {
     margin: 0 0 18px
+}
+
+.p {
+    display: block
 }
 
 table {
@@ -558,7 +570,7 @@ input {
 }
 
 
-#session {
+.learning-session {
     display: grid ;
     grid-gap: 24px;
     grid-template-columns: 100%;
@@ -574,7 +586,7 @@ input {
 }
 
 @media (min-width: 700px) {
-    #session {
+    .learning-session {
         grid-gap: 0;
         grid-template-rows: 100px 1fr 140px;
         min-height: 690px;
@@ -582,22 +594,24 @@ input {
     }
 }
 
-
-
 @media (hover: hover) {
     .submit-button:hover {
         filter: var(--__internal__filter-hover);
     }
 }
 
-#session-header {
+.learning-session__header {
+    align-items: center;
+    display: grid;
+    grid-template-columns: min-content 1fr;
+    grid-gap: 24px;
     margin: 0 auto;
     width: 100%;
     max-width: 1080px;
 }
 
 @media (min-width: 700px) {
-    #session-header {
+    .learning-session__header {
         padding: 50px 40px 0;
     }
 }
@@ -622,6 +636,10 @@ input {
     background: var(--web-ui_progress-bar-background, rgb(var(--color-swan)));
     border-radius: calc(var(--__internal__progress-bar-height) / 2);
     position: relative;
+    --web-ui_progress-bar-color: rgb(var(--color-owl));
+    --web-ui_progress-bar-shine-height: 3px;
+    --__internal__progress-bar-height: 16px;
+    --__internal__progress-bar-inner-value: 0%;
 }
 
 .progress-bar-value {
@@ -651,7 +669,7 @@ input {
     width: calc(var(--__internal__progress-bar-value) - var(--__internal__progress-bar-height) / 2);
 }
 
-#session-body {
+.learning-session__body {
     align-content: center;
     display: grid ;
     font-size: 19px;
@@ -664,13 +682,13 @@ input {
 }
 
 @media (min-width: 700px) {
-    #session-body {
+    .learning-session__body {
         grid-template-columns: min-content;
         grid-template-rows: min-content;
     }
 }
 
-.challenge {
+.learning-session__challenge {
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -679,7 +697,7 @@ input {
 }
 
 @media (min-width: 700px) {
-    .challenge {
+    .learning-session__challenge {
         gap: 24px;
         justify-content: start;
         min-height: 450px;
@@ -1080,13 +1098,26 @@ input {
     word-break: break-word;
 }
 
+.word-item__value {
+    border: none;
+    font-size: 19px;
+    font-weight: 700;
+    margin: 0 0 10px;
+    padding: 0;
+    width: 100%;
+}
+
 .word-item__translation {
+    border: none;
     color: rgb(var(--color-wolf));
     font-size: 15px;
     margin: 0;
+    padding: 0;
+    width: 100%;
 }
 
 .word-item__learning-progress {
+    aspect-ratio: 1;
     border-radius: 50%;
     height: 16px;
     width: 16px;
@@ -1096,8 +1127,7 @@ input {
     display: flex;
     flex-direction: column;
     gap: 16px;
-    margin-top: 12px;
-    padding: 0 24px;
+    padding: 12px 24px 24px 24px;
     width: 100%;
 }
 

@@ -1,24 +1,44 @@
-[{:created-at 1739134194017,
-  :last-reviewed nil,
-  :translation "обстоятельство",
-  :word "der Umstand",
-  :reviews 0,
-  :successful-reviews 0}
- {:created-at 1739134349829,
-  :last-reviewed nil,
+{"trauen"
+ {:created-at 1739464208,
+  :last-reviewed 1739468424,
+  :forgetting-rate 0.005904900000000002,
+  :translation "осмелиться",
+  :word "trauen",
+  :reviews [true true true true true]},
+ "verbringen"
+ {:created-at 1739464208,
+  :last-reviewed 1739468445,
+  :forgetting-rate 0.0076527504,
+  :translation "проводить, коротать (время)",
+  :word "verbringen",
+  :reviews [false true true true false true true true]},
+ "übrig"
+ {:created-at 1739464361,
+  :last-reviewed 1739468439,
+  :forgetting-rate 0.00708588,
+  :translation "оставшийся, остальной",
+  :word "übrig",
+  :reviews [false true true true true true]},
+ "einzig"
+ {:created-at 1739464410,
+  :last-reviewed 1739468452,
+  :forgetting-rate 0.005904900000000002,
   :translation "единственный",
   :word "einzig",
-  :reviews 0,
-  :successful-reviews 0}
- {:created-at 1739134471288,
-  :last-reviewed nil,
-  :translation "выносливость",
-  :word "die Ausdauer",
-  :reviews 0,
-  :successful-reviews 0}
- {:created-at 1739135278422,
-  :last-reviewed nil,
-  :translation "корнеплод",
-  :word "die Rübe",
-  :reviews 0,
-  :successful-reviews 0}]
+  :reviews [true true true true true]},
+ "bevorstehen"
+ {:created-at 1739464893,
+  :last-reviewed 1739479704,
+  :forgetting-rate 0.01190155742208,
+  :translation "предстоять, угрожать",
+  :word "bevorstehen",
+  :reviews
+  [false false true false true true true true true false false true]},
+ "entlassen"
+ {:created-at 1739465035,
+  :last-reviewed 1739468654,
+  :forgetting-rate 0.0099179645184,
+  :translation "отпускать, освобождать",
+  :word "entlassen",
+  :reviews
+  [false true false true false true true true true false true]}}
