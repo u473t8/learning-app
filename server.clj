@@ -1,9 +1,10 @@
-(require '[clojure.string :as str]
+(require '[cheshire.core :as cheshire]
+         '[clojure.string :as str]
          '[clojure.edn :as edn]
          '[clojure.math :as math]
          '[org.httpkit.server :as srv]
+         '[org.httpkit.client :as client]
          '[hiccup2.core :as hiccup]
-         '[debux.core]
          '[clojure.pprint :as pprint]
          '[clojure.java.io :as io]
          '[ring.middleware.keyword-params :as middleware.keyword-params]
@@ -30,16 +31,133 @@
       (str/trim)
       (str/lower-case)
       (str/replace #"\s+" " ")
+      (str/replace #"\p{Punct}" "")
       (str/replace #"ä" "ae")
       (str/replace #"ö" "oe")
       (str/replace #"ü" "ue")
       (str/replace #"ß" "ss")))
 
 
+(defn normalize-index
+  [indexed-coll]
+  (reduce-kv
+   (fn [result k v]
+     (assoc result (normalize-text (name k)) v))
+   {}
+   indexed-coll))
+
+
 (defn prozent->color
   [prozent]
   (let [prozent (-> prozent (or 0) (max 0) (min 100))]
     (format "color-mix(in hsl, rgb(88, 204, 2) %s%%, rgb(255, 75, 75))" prozent)))
+
+
+;;
+;; Examples Generator
+;;
+
+(def open-ai-service-account-api-key
+  (System/getenv "OPEN_AI_KEY"))
+
+(def system-prompt
+  "Return a JSON object where:
+   - Each key is a German word
+   - Each value is an object with \"sentence\" and \"translation\" keys
+   - \"sentence\" contains a German sentence using the word with appropriate grammatical form:
+     * Nouns: Use cases (Nominativ/Genitiv/Dativ/Akkusativ) or number
+     * Verbs: Use tenses (Präsens/Präteritum/Imperativ/Konjunktiv/etc.)
+     * Adjectives: Use proper declensions
+    Generated sentences should align with language proficiency levels from A1 to C2, incorporating diverse grammatical structures (e.g., conditional clauses, subjunctive mood, etc.) as well as idioms, set phrases, and fixed expressions.
+    The sentences should adhere to standard written and spoken German.
+  - \"translation\" contains the Russian translation of the sentence
+    Return only the JSON object without additional text.")
+
+
+(defn make-api-request
+  [words]
+  (client/request
+   {:url "https://api.openai.com/v1/chat/completions"
+    :method :post
+    :headers {"Authorization" (str "Bearer " open-ai-service-account-api-key)
+              "Content-Type" "application/json"}
+    :body (cheshire/generate-string
+           {:model "gpt-4o-mini"
+            :messages [{:role "system"
+                        :content system-prompt}
+                       {:role "user"
+                        :content (str "Generate for input words: " (cheshire/generate-string words))}]
+            :response_format {:type "json_schema"
+                              :json_schema {:name "sentence_examples"
+                                            :schema {:type "object"
+                                                     :properties (into
+                                                                  {}
+                                                                  (for [word words]
+                                                                    [word
+                                                                     {:type "object"
+                                                                      :properties {"sentence" {:type "string"
+                                                                                               :description "A German sentence using the word."}
+                                                                                   "translation" {:type "string"
+                                                                                                  :description "Russian translation of the sentence."}}
+                                                                      :additionalProperties false
+                                                                      :required ["sentence" "translation"]}]))
+                                                     :additionalProperties false
+                                                     :required words}
+                                            :strict true}}
+            :temperature 0})}))
+
+
+(defn parse-json
+  [json-string]
+  (cheshire/parse-string json-string true))
+
+
+(defonce examples-cache (atom {}))
+
+
+(comment
+  (reset! examples-cache {})
+  (deref examples-cache))
+
+
+(defn cached-words
+  []
+  (-> @examples-cache keys set))
+
+
+;; With cache
+
+(defn sentence-examples [words]
+  (let [new-words (remove (cached-words) (map normalize-text words))
+        _        (prn "new-words" new-words)
+        response (when (seq new-words)
+                   @(make-api-request new-words))
+        examples (-> response :body parse-json :choices first :message :content parse-json normalize-index)]
+    (swap! examples-cache merge examples)
+    (vals (select-keys @examples-cache words))))
+
+
+;; Without cache
+#_
+(defn sentence-examples [words]
+  (let [response @(make-api-request words)]
+    (-> response :body parse-json :choices first :message :content parse-json vals)))
+
+
+(comment
+  (remove (cached-words) ["einzig" "trauen"])
+  (sentence-examples
+   ["einzig" "trauen"]))
+
+
+(defn example-value
+  [example]
+  (:sentence example))
+
+
+(defn example-translation
+  [example]
+  (:translation example))
 
 
 ;;
@@ -72,7 +190,7 @@
   (let [current-time (current-time)
         learning-pair {:created-at current-time
                        :last-reviewed current-time
-                       :forgetting-rate 0.01 ;; approx 95% forgetting after 5 min
+                       :forgetting-rate 0.00231 ;; approx 50% forgetting after 5 min
                        :translation translation
                        :word value
                        :reviews []}]
@@ -144,21 +262,42 @@
 ;; Learning Session
 ;;
 
+(def session-word-limit 10)
+
 (def initial-session-state
   {:challenges {}
-   :current-word nil
-   :learned-words #{}})
+   :current-challenge nil})
 
 
 (def session-state (atom initial-session-state))
 
 
+(comment
+  (deref session-state))
+
+
 (defn start-learning-session!
   []
-  (let [challenges (->> (learning-pairs)
-                        (sort-by retention-level)
-                        (take 10))]
-    (swap! session-state assoc :challenges challenges)))
+  (let [learning-pairs (->> (learning-pairs)
+                            (sort-by retention-level)
+                            (take session-word-limit))
+        words (map word-value learning-pairs)
+        challenges (into
+                    (for [learning-pair learning-pairs]
+                      {:text (word-translation learning-pair)
+                       :answer (word-value learning-pair)
+                       :word (word-value learning-pair)})
+                    (for [example (sentence-examples words)]
+                      {:text (example-translation example)
+                       :answer (example-value example)
+                       :sentence? true}))]
+    (swap! session-state assoc :challenges challenges)
+    (swap! session-state assoc :session-length (count challenges))))
+
+
+(defn session-length
+  []
+  (:session-length @session-state))
 
 
 (defn quit-learning-session!
@@ -166,14 +305,9 @@
   (reset! session-state initial-session-state))
 
 
-(defn current-word
+(defn current-challenge
   []
-  (:current-word @session-state))
-
-
-(defn learned-words
-  []
-  (:learned-words @session-state))
+  (:current-challenge @session-state))
 
 
 (defn challenges
@@ -183,9 +317,9 @@
 
 (defn next-challenge!
   []
-  (when-let [learning-pairs (rand-nth (seq (challenges)))]
-    (swap! session-state assoc :current-word (word-value learning-pairs))
-    (word-translation learning-pairs)))
+  (when-let [challenge (rand-nth (seq (challenges)))]
+    (swap! session-state assoc :current-challenge challenge)
+    (:text challenge)))
 
 
 (defn has-next-challenge?
@@ -193,27 +327,29 @@
   (seq (challenges)))
 
 
-(defn learn-current-word!
+(defn pass-challenge!
   []
-  (let [current-word (current-word)]
-    (swap! session-state update :challenges (fn [challenges]
-                                              (remove #(= (:word %) current-word) challenges)))
-    (swap! session-state update :learned-words conj current-word)))
+  (swap! session-state update :challenges (fn [challenges]
+                                            (remove #{(current-challenge)} challenges))))
 
 
 (defn review-user-input!
   [user-input]
-  (let [current-word (current-word)
-        retained? (= (normalize-text user-input) (normalize-text current-word))]
-    (update-forgetting-rate! current-word retained?)
+  (let [current-challenge (current-challenge)
+
+        answer (:answer current-challenge)
+        retained? (= (normalize-text user-input) (normalize-text answer))]
+    (when-let [word (:word current-challenge)]
+      (update-forgetting-rate! word retained?))
     (when retained?
-      (learn-current-word!))))
+      (pass-challenge!))))
 
 
 (defn current-progress-prozent []
-  (if (pos? (count (challenges)))
-    (str (/ (* 100.0 (count (learned-words))) (count (challenges))) "%")
-    0))
+  (let [count-challenges (count (challenges))]
+    (if (pos? count-challenges)
+      (str (- 100.0 (/ (* 100 count-challenges) (session-length))) "%")
+      0)))
 
 
 ;;
@@ -277,35 +413,46 @@
           "Загрузить больше"]
          [:span.arrow-down-icon]])))])
 
+(def loaders
+  ["СЕЙЧАС ВСЁ БУДЕТ ГОТОВО"
+   "УЖЕ ПОЧТИ ВСЁ"
+   "УЖЕ ДОЛЖНО БЫЛО ЗАПУСТИТЬСЯ"
+   "ПЕРЕНАПРАВЛЯЕМ ЗАПРОС В ПОДДЕРЖКУ"
+   "ПОПРОБУЙТЕ ПЕРЕЗАГРУЗИТЬ РОУТЕР"])
+
 
 (defn home
   []
   [:div.home
+   [:div#loader.loader.htmx-indicator
+    [:div.loader__list
+     (for [loader loaders]
+       [:div.loader__text
+        loader])]]
    [:div
     {:style {:padding "24px"}}
     [:button.big-button.green-button
-     {:hx-get "/learning-session"}
+     {:hx-get "/learning-session"
+      :hx-indicator "#loader"
+      :hx-push-url "true"}
      "НАЧАТЬ"]]
-   [:section
+   [:section.words
     {:style {:flex 1
              :display "flex"
              :flex-direction "column"
              :overflow "hidden"
              :width "100%"}}
-    [:form
-     {:style {:position "relative"
-              :margin "0 24px 12px 24px"}}
-     [:span.input__search-icon
-      {:style {:position "absolute"}}]
-     [:input.new-word-form__input
-      {:autocomplete "off"
-       :style {:padding-left "40px"}
-       :hx-post "/search"
-       :placeholder "Поиск слова"
-       :hx-target "#words-list"
-       :hx-swap "outerHTML"
-       :hx-trigger "input changed delay:500ms, keyup[key=='Enter']"
-       :name "search"}]]
+    [:form.words__search
+     [:div.input
+      [:span.input__search-icon]
+      [:input.input__input-area.input__input-area--icon
+       {:autocomplete "off"
+        :hx-get "/search"
+        :placeholder "Поиск слова"
+        :hx-target "#words-list"
+        :hx-swap "outerHTML"
+        :hx-trigger "input changed delay:500ms, keyup[key=='Enter']"
+        :name "search"}]]]
     [:hr
      {:style {:width "100%", :margin 0}}]
     (words-list)]
@@ -337,161 +484,190 @@
 (defn learning-session-progress
   [progress]
   [:div.progress-bar-value
-   {:id "progress-bar"
-    :hx-get "/learning-session/progress"
-    :hx-swap "outerHTML"
-    :hx-trigger "next-challenge from:body"}
-   {:style {"--__internal__progress-bar-value" (str progress "%")}}])
+   {:style {"--__internal__progress-bar-value" progress}}])
 
 
 (defn challenge-text
   []
   [:div.text-plate
-   {:id "challenge-text"
-    :hx-get "/learning-session/challenge"
-    :hx-swap "outerHTML"
-    :hx-trigger "next-challenge from:body"}
+   {:hx-on::load "let user_input = htmx.find('#user-input'); user_input.disabled = false; user_input.focus()"}
    (next-challenge!)])
 
 
-(defn finish-session-button
+(defn text-input
+  []
+  [:textarea.text-input
+   {:id "user-input"
+    :autocapitalize "off"
+    :autocomplete "off"
+    :autocorrect "off"
+    :autofocus "true"
+    :hx-on:keydown "if (event.key === 'Enter' && !event.shiftKey) {event.preventDefault();  this.form.requestSubmit()}"
+    :lang "de"
+    :name "user-input"
+    :placeholder "Напишите на немецком"
+    :spellcheck "false"}])
+
+
+(defn submit-challenge
   []
   [:button.big-button.green-button
-   {:autofocus "true"
-    :hx-post "/exit-session"}
-   "ЗАКОНЧИТЬ"])
+   {:form "challenge-form"
+    :type "submit"}
+   "ПРОВЕРИТЬ"])
 
+
+
+;; Events:
+;; - new-challenge
+;; - incorrect-submission
+;; - challenge-over
 
 (defn learning-session
   []
   [:div.learning-session
+
    [:div.learning-session__header
     [:button.cancel-button
      {:hx-trigger "click"
-      :hx-post "/exit-session"}
+      :hx-delete "/learning-session"}
      [:span.close-icon]]
-    [:div.progress-bar
-     (learning-session-progress 0)]]
-   [:form.learning-session__body
-    {:hx-post "/learning-session/challenge"
-     :hx-on:next-challenge "this.reset()"
-     :hx-target "#learning-session-footer"
-     :hx-trigger "submit, keydown[key=='Enter'] from:#user-input"
-     :hx-swap "none"
-     :id "challenge-form"}
-    [:div.learning-session__challenge
-     (challenge-text)]
-    [:textarea.learning-session__user-input
-     {:autocapitalize "off"
-      :autocomplete "off"
-      :autocorrect "off"
-      :autofocus "true"
-      :hx-on:challenge-over "this.disabled = true"
-      :id "user-input"
-      :lang "de"
-      :name "user-input"
-      :placeholder "Напишите на немецком"
-      :spellcheck "false"}]]
-   [:div.learning-session__footer
-    {:id "learning-session-footer"}
-    [:button.big-button.green-button
-     {:form "challenge-form"
-      :hx-delete "/learning-session"
-      :hx-on:challenge-over "this.disabled = true"
-      :hx-trigger "challenge-over from:body"
-      :type "submit"}
-     "ПРОВЕРИТЬ"]]])
+    [:div#progress-bar.progress-bar
+     (learning-session-progress "0%")]]
 
-(defn home-routes [{:keys [:request-method :uri] :as req}]
+   [:form.learning-session__body
+    {:id "challenge-form"
+     :hx-post "/learning-session/challenge"
+     :hx-on::before-on-load "console.log(event)"
+     :hx-on::before-request "htmx.find('textarea').disabled = true"
+     :hx-swap "none"}
+    [:div#challenge.learning-session__challenge
+     {:hx-get "/learning-session/challenge/text"
+      :hx-swap "innerHTML"
+      :hx-trigger "new-challenge from:body"}
+     (challenge-text)]
+    [:div.learning-session__user-input
+     {:hx-get "/learning-session/challenge/input"
+      :hx-swap "innerHTML"
+      :hx-trigger "new-challenge from:body"}
+     (text-input)]]
+
+   [:div.learning-session__footer
+    [:div.challenge-answer
+     {:hx-trigger "challenge-fail from:body"
+      :hx-swap "beforeend"
+      :hx-get "/learning-session/challenge/answer"}
+     [:h2.challenge-answer__header
+      "Правильный ответ:"]]
+    [:div.learning-session__action
+     {:hx-get "/learning-session/action"
+      :hx-trigger "challenge-fail from:body, new-challenge, session-end from:body"
+      :hx-vals "js:{event: event.type}"}
+     (submit-challenge)]]])
+
+
+(defn- home-routes [{:keys [:request-method :uri] :as req}]
   (println [request-method uri])
   (case [request-method uri]
-    [:get "/icons.svg"] {:body (slurp "icons.svg")
-                         :headers {"Content-Type" "image/svg+xml"}
-                         :status "200"}
-    [:get "/styles.css"] {:body (slurp "styles.css")
+    [:get "/icons.svg"]  {:body    (slurp "icons.svg")
+                          :headers {"Content-Type" "image/svg+xml"}
+                          :status  "200"}
+    [:get "/styles.css"] {:body    (slurp "styles.css")
                           :headers {"Content-Type" "text/plain"}
-                          :status "200"}
+                          :status  "200"}
 
     [:get "/"] (if (get-in req [:headers "hx-request"])
-                 {:body (home)
+                 {:body    (home)
                   :headers {"HX-Retarget" "body"}
-                  :status 200}
-                 {:body (page (home))
+                  :status  200}
+                 {:body   (page (home))
                   :status 200})
 
     [:get "/learning-session"] (do
                                  (start-learning-session!)
                                  (if (get-in req [:headers "hx-request"])
-                                   {:body (learning-session)
+                                   {:body    (learning-session)
                                     :headers {"HX-Retarget" "body"}
-                                    :status 200}
-                                   {:body (page (learning-session))
+                                    :status  200}
+                                   {:body   (page (learning-session))
                                     :status 200}))
 
-    [:get "/learning-session/progress"] {:body (learning-session-progress
-                                                (current-progress-prozent))
-                                         :status 200}
+    [:delete "/learning-session"]     (do
+                                        (quit-learning-session!)
+                                        {:headers {"HX-Location" "/"
+                                                   "HX-Push-Url" "true"}})
+    [:get "/learning-session/action"] (let [event (-> req :params :event)]
+                                        {:body (case event
+                                                 "challenge-fail" [:button.big-button.red-button
+                                                                   {:autofocus "true"
+                                                                    :hx-on:click "htmx.trigger(this, 'new-challenge')"}
+                                                                   "ДАЛЕЕ"]
+                                                 "new-challenge"  (list
+                                                                   (submit-challenge)
+                                                                   [:div#challenge-answer
+                                                                    {:hx-swap-oob "delete"}])
+                                                 "session-end"    [:button.big-button.green-button
+                                                                   {:autofocus "true"
+                                                                    :hx-delete "/learning-session"}
+                                                                   "ЗАКОНЧИТЬ"])
+                                         :status 200})
 
-    [:get "/learning-session/challenge"] {:body (challenge-text)
-                                          :status 200}
-    [:post "/learning-session/challenge"] (let [user-input (-> req :params :user-input)]
-                                            (if (some? (review-user-input! user-input))
-                                              {:headers (if (has-next-challenge?)
-                                                          {"HX-Trigger" "next-challenge"}
-                                                          {"HX-Trigger" "challenge-over"})
-                                               :status 200}
-                                              {:body (list
-                                                      [:div.learning-session__footer.learning-session-footer--error
-                                                       {:hx-on::load "htmx.find('#user-input').disabled = true"}
-                                                       [:div.correct-answer
-                                                        [:h2.correct-answer__header
-                                                         "Правильный ответ:"]
-                                                        [:div.correct-answer__body
-                                                         (current-word)]]
-                                                       [:button#submit-button.big-button.red-button
-                                                        {:hx-post "/next-challenge"
-                                                         :autofocus "true"}
-                                                        "ДАЛЕЕ"]])
-                                               :headers {"HX-Trigger" "challenge-over"}
-                                               :status 400}))
-    [:post "/next-challenge"] {:body (list
-                                      [:div
-                                       {:hx-swap-oob "textContent"
-                                        :id "challenge-text"}
-                                       (next-challenge!)]
-                                      [:div#session-footer.session-footer
-                                       {:hx-swap-oob "outerHTML"
-                                        :hx-on::load "htmx.find('#user-input').disabled = false;
-                                                      htmx.find('#user-input').value = '';
-                                                      htmx.find('#user-input').focus()"}
-                                       [:button#submit-button.big-button.green-button
-                                        {:type "submit"}
-                                        "ПРОВЕРИТЬ"]])
-                               :status 200}
-    [:post "/learning-pair"] (let [{:keys [value translation]} (:params req)]
-                               (if (or
-                                    (not (string? value)) (str/blank? value)
-                                    (not (string? translation)) (str/blank? translation))
-                                 {:body (cond-> (list)
-                                          (or (not (string? value)) (str/blank? value))
-                                          (conj
-                                           [:input.new-word-form__input.new-word-form__input--error
-                                            {:hx-on:change "htmx.find('#new-word-translation').focus()"
-                                             :hx-swap-oob "true"
-                                             :id "new-word-value"
-                                             :name "value"}])
+    [:get "/learning-session/challenge/answer"] {:body [:div#challenge-answer.challenge-answer__body
+                                                        (:answer (current-challenge))]
+                                                 :status 200}
 
-                                          (or (not (string? translation)) (str/blank? translation))
-                                          (conj
-                                           [:input.new-word-form__input.new-word-form__input--error
-                                            {:id "new-word-translation"
-                                             :hx-swap-oob "true"
-                                             :name "translation"}]))
-                                  :status 400}
-                                 (do
-                                   (add-learning-pair! value translation)
-                                   {:body (words-list)
-                                    :status 200})))
+    [:get "/learning-session/challenge/input"] {:body (text-input)
+                                                :status 200}
+
+    [:get "/learning-session/challenge/text"]   {:body (challenge-text)
+                                                 :status 200}
+
+    [:get "/learning-session/challenge"]        {:status 200
+                                                 :body [:div#challenge
+                                                        {:hx-swap-oob "innerHTML"}
+                                                        (challenge-text)]}
+
+    [:post "/learning-session/challenge"]       (let [user-input (-> req :params :user-input)]
+                                                  (if (review-user-input! user-input)
+                                                    {:headers (if (has-next-challenge?)
+                                                                {"HX-Trigger" "new-challenge"}
+                                                                {"HX-Trigger" "session-end"})
+                                                     :body [:div#progress-bar
+                                                            {:hx-swap-oob "innerHTML"}
+                                                            (learning-session-progress
+                                                             (current-progress-prozent))]
+                                                     :status 200}
+                                                    {:headers {"HX-Trigger" "challenge-fail"}
+                                                     :status 400}))
+
+    [:get "/learning-session/progress"]         {:body (learning-session-progress
+                                                        (current-progress-prozent))
+                                                 :status 200}
+
+    [:post "/learning-pair"]                    (let [{:keys [value translation]} (:params req)]
+                                                  (if (or
+                                                       (not (string? value)) (str/blank? value)
+                                                       (not (string? translation)) (str/blank? translation))
+                                                    {:body (cond-> (list)
+                                                             (or (not (string? value)) (str/blank? value))
+                                                             (conj
+                                                              [:input.new-word-form__input.new-word-form__input--error
+                                                               {:hx-on:change "htmx.find('#new-word-translation').focus()"
+                                                                :hx-swap-oob "true"
+                                                                :id "new-word-value"
+                                                                :name "value"}])
+
+                                                             (or (not (string? translation)) (str/blank? translation))
+                                                             (conj
+                                                              [:input.new-word-form__input.new-word-form__input--error
+                                                               {:id "new-word-translation"
+                                                                :hx-swap-oob "true"
+                                                                :name "translation"}]))
+                                                     :status 400}
+                                                    (do
+                                                      (add-learning-pair! value translation)
+                                                      {:body (words-list)
+                                                       :status 200})))
     [:put "/learning-pair"] {:status 200
                              :body (let [{:keys [value translation]} (:params req)
                                          original-value (get-in req [:headers "hx-target"])]
@@ -501,12 +677,8 @@
                                       {:word-value value
                                        :word-translation translation
                                        :retention-level 100}))}
-    [:post "/exit-session"] (do
-                              (quit-learning-session!)
-                              {:headers {"HX-Location" "/"
-                                         "HX-Push-Url" "true"}})
-    [:post "/search"] {:body (words-list {:search (-> req :params :search)})
-                       :status 200}))
+    [:get "/search"]        {:body (words-list {:search (-> req :params :search)})
+                             :status 200}))
 
 
 (defn wrap-hiccup
