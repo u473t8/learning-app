@@ -1114,6 +1114,10 @@ input {
     width: 16px;
 }
 
+.word-item--add-new-word {
+    cursor: pointer;
+}
+
 .new-word-form {
     display: flex;
     flex-direction: column;
@@ -1213,11 +1217,11 @@ input {
 }
 
 .arrow-down-icon {
-    transform: scale(1.4);
+    transform: scale(1.1);
     transform-origin: 50% 50%;
-    background-position: -132px -69px;
-    height: 15px;
-    width: 14px;
+    background-position: -98px -80px;
+    height: 10px;
+    width: 17px;
     background-image: url(icons.svg);
     display: inline-block;
     vertical-align: middle;
@@ -1245,7 +1249,7 @@ input {
 
 .loader__list {
     align-items: center;
-    animation: 10s steps(5) 0s infinite normal slide;
+    animation: 10s steps(var(--items-count)) 0s infinite normal slide;
     display: flex;
     flex: 1;
     flex-direction: column;
@@ -1257,7 +1261,7 @@ input {
 
 @keyframes slide {
     100% {
-        top: calc(50% - 50vh - 500vh);
+        top: calc(50% - 50vh - calc(var(--items-count) * 100vh));
     }
 }
 

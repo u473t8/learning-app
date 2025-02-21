@@ -24,6 +24,10 @@
   (quot (System/currentTimeMillis) 1000))
 
 
+(comment
+  (current-time))
+
+
 (defn normalize-text
   [text]
   (-> text
@@ -126,10 +130,9 @@
 
 
 ;; With cache
-
+#_
 (defn sentence-examples [words]
   (let [new-words (remove (cached-words) (map normalize-text words))
-        _        (prn "new-words" new-words)
         response (when (seq new-words)
                    @(make-api-request new-words))
         examples (-> response :body parse-json :choices first :message :content parse-json normalize-index)]
@@ -138,7 +141,6 @@
 
 
 ;; Without cache
-#_
 (defn sentence-examples [words]
   (let [response @(make-api-request words)]
     (-> response :body parse-json :choices first :message :content parse-json vals)))
@@ -183,7 +185,6 @@
 (defn learning-pairs
   []
   (vals @learning-pairs-indexed))
-
 
 (defn add-learning-pair!
   [value translation]
@@ -231,38 +232,39 @@
     (* 100 (math/exp (- (* forgetting-rate time-since-review))))))
 
 
+(comment
+  (retention-level
+   {:created-at 1740140730,
+    :last-reviewed 1740152268,
+    :forgetting-rate 8.35359048891287E-5,
+    :translation "отпускать, освобождать",
+    :word "entlassen",
+    :reviews [true]}))
 
-(defn last-reviewed
-  [learning-pair]
-  (:last-reviewed learning-pair))
 
-
-#_
-(defn forgetting-rate-modifier
+(defn learn-pair
   [learning-pair retained?]
-  (let [{:keys [last-reviewed forgetting-rate]} learning-pair
-        time-since-review (- (current-time) last-reviewed)
-        rate-reward (math/exp (- (/ (* 3 time-since-review) (* 60 60 24 365))))
-        rate-penalty (- 1 (math/exp (- (/ (* 3 time-since-review) (* 60 60 24 365)))))]
-    (* 100 (math/exp (- (* forgetting-rate time-since-review))))))
+  (let [current-time (current-time)
+        time-since-review (- current-time (:last-reviewed learning-pair))]
+    (-> learning-pair
+        (update :reviews conj retained?)
+        (assoc :last-reviewed current-time)
+        (update :forgetting-rate (fn [forgetting-rate]
+                                   (if retained?
+                                     (/ forgetting-rate (+ 1 (* forgetting-rate time-since-review)))
+                                     (* 2 forgetting-rate)))))))
 
 
-(defn update-forgetting-rate!
+(defn learn-word!
   [word retained?]
-  (swap! learning-pairs-indexed update word #(-> %
-                                                (assoc :last-reviewed (current-time))
-                                                (update :reviews conj retained?)
-                                                (update :forgetting-rate (fn [forgetting-rate]
-                                                                           (if retained?
-                                                                             (* 0.9 forgetting-rate)
-                                                                             (* 1.2 forgetting-rate)))))))
+  (swap! learning-pairs-indexed update word learn-pair retained?))
 
 
 ;;
 ;; Learning Session
 ;;
 
-(def session-word-limit 10)
+(def session-word-limit 3)
 
 (def initial-session-state
   {:challenges {}
@@ -336,11 +338,10 @@
 (defn review-user-input!
   [user-input]
   (let [current-challenge (current-challenge)
-
         answer (:answer current-challenge)
         retained? (= (normalize-text user-input) (normalize-text answer))]
     (when-let [word (:word current-challenge)]
-      (update-forgetting-rate! word retained?))
+      (learn-word! word retained?))
     (when retained?
       (pass-challenge!))))
 
@@ -399,7 +400,7 @@
    {:id "words-list"}
    (when-let [learning-pairs (search-word search)]
      (list
-      (for [learning-pair (take 10 (sort-by retention-level learning-pairs))]
+      (for [learning-pair (take 10 (sort-by retention-level > learning-pairs))]
         (let [word-value (word-value learning-pair)
               retention-level (retention-level learning-pair)
               word-translation (word-translation learning-pair)]
@@ -413,8 +414,10 @@
           "Загрузить больше"]
          [:span.arrow-down-icon]])))])
 
+
 (def loaders
-  ["СЕЙЧАС ВСЁ БУДЕТ ГОТОВО"
+  ["НАЧИНАЕМ УРОК"
+   "СЕЙЧАС ВСЁ БУДЕТ ГОТОВО"
    "УЖЕ ПОЧТИ ВСЁ"
    "УЖЕ ДОЛЖНО БЫЛО ЗАПУСТИТЬСЯ"
    "ПЕРЕНАПРАВЛЯЕМ ЗАПРОС В ПОДДЕРЖКУ"
@@ -426,6 +429,7 @@
   [:div.home
    [:div#loader.loader.htmx-indicator
     [:div.loader__list
+     {:style {"--items-count" (count loaders)}}
      (for [loader loaders]
        [:div.loader__text
         loader])]]
@@ -466,33 +470,37 @@
     [:label.new-word-form__label
      "Новое слово"
      [:input.new-word-form__input
-      {:autocomplete "off"
+      {:id "new-word-value"
+       :autocapitalize "off"
+       :autocomplete "off"
+       :autocorrect "off"
+       :autofocus "true"
        :hx-on:change "htmx.find('#new-word-translation').focus()"
-       :id "new-word-value"
+       :lang "de"
        :name "value"}]]
     [:label.new-word-form__label
      "Перевод"
      [:input.new-word-form__input
-      {:autocomplete "off"
-       :id "new-word-translation"
+      {:id "new-word-translation"
+       :autocapitalize "off"
+       :autocomplete "off"
+       :autocorrect "off"
+       :lang "de"
        :name "translation"}]]
     [:button.big-button.blue-button
      {:type "submit"}
      "ДОБАВИТЬ"]]])
-
 
 (defn learning-session-progress
   [progress]
   [:div.progress-bar-value
    {:style {"--__internal__progress-bar-value" progress}}])
 
-
 (defn challenge-text
   []
   [:div.text-plate
    {:hx-on::load "let user_input = htmx.find('#user-input'); user_input.disabled = false; user_input.focus()"}
    (next-challenge!)])
-
 
 (defn text-input
   []
