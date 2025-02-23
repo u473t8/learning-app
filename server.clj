@@ -57,6 +57,21 @@
     (format "color-mix(in hsl, rgb(88, 204, 2) %s%%, rgb(255, 75, 75))" prozent)))
 
 
+(defn some-str?
+  [string]
+  (not (str/blank? string)))
+
+
+(defn escape-id
+  [string]
+  (str/replace string #"\s" "_"))
+
+
+(defn unescape-id
+  [string]
+  (str/replace string #"_" " "))
+
+
 ;;
 ;; Examples Generator
 ;;
@@ -377,42 +392,86 @@
 
 (defn words-list-item
   [{:keys [word-value word-translation retention-level]}]
-  [:li.list-item.word-item
-   {:id word-value
-    :hx-target "this"}
+  (let [item-id (escape-id word-value)]
+   [:li.list-item.word-item
+   {:id item-id}
    [:form
-    {:hx-put "/learning-pair"
-     :hx-trigger "change from:find (input)"
+    {:hx-put "/learning-pairs"
+     :hx-on::before-request "console.log(event)"
+     :hx-trigger "change"
+     :hx-target (str "#" item-id)
      :hx-swap "outerHTML"}
     [:input.word-item__value
      {:name "value"
+      :autocapitalize "off"
+      :autocomplete "off"
+      :autocorrect "off"
+      :lang "de"
       :value word-value}]
     [:input.word-item__translation
      {:name "translation"
+      :autocapitalize "off"
+      :autocomplete "off"
+      :autocorrect "off"
+      :lang "ru"
       :value word-translation}]]
    [:div.word-item__learning-progress
-    {:style {:background-color (prozent->color retention-level)}}]])
+    {:style {:background-color (prozent->color retention-level)}}]]))
 
 
-(defn words-list
-  [& {:keys [search]}]
-  [:ul.words-list.list
-   {:id "words-list"}
-   (when-let [learning-pairs (search-word search)]
-     (list
-      (for [learning-pair (take 10 (sort-by retention-level > learning-pairs))]
-        (let [word-value (word-value learning-pair)
-              retention-level (retention-level learning-pair)
-              word-translation (word-translation learning-pair)]
-          (words-list-item
-           {:word-value word-value
-            :word-translation word-translation
-            :retention-level retention-level})))
-      (when (seq (drop 10 learning-pairs))
-        [:li.list-item.word-item.word-item--add-new-word
-         [:b
-          "Загрузить больше"]
-         [:span.arrow-down-icon]])))])
+#_
+(defn word-list-items
+  [search]
+  (when-let [learning-pairs (search-word search)]
+    (list
+     (for [learning-pair (take 10 (sort-by retention-level > learning-pairs))]
+       (let [word-value (word-value learning-pair)
+             retention-level (retention-level learning-pair)
+             word-translation (word-translation learning-pair)]
+         (words-list-item
+          {:word-value word-value
+           :word-translation word-translation
+           :retention-level retention-level})))
+     (when (seq (drop 10 learning-pairs))
+       [:li.list-item.word-item.word-item--add-new-word
+        {:hx-trigger "click"
+         :hx-vals (format "{'search': '%s'}" search)
+         :hx-swap "beforebegin"}
+        [:b
+         "Загрузить больше"]
+        [:span.arrow-down-icon]]))))
+
+
+(def words-list:page 10)
+
+
+(defn words-list-items
+  [& {:keys [search words-count]}]
+  (let [words-count (or words-count words-list:page)]
+    (when-let [learning-pairs (search-word search)]
+      (list
+       (for [learning-pair (->> learning-pairs
+                                (sort-by retention-level >)
+                                (take words-count))]
+         (let [word-value (word-value learning-pair)
+               retention-level (retention-level learning-pair)
+               word-translation (word-translation learning-pair)]
+           (words-list-item
+            {:word-value word-value
+             :word-translation word-translation
+             :retention-level retention-level})))
+       (when (seq (drop words-count learning-pairs))
+         [:li.list-item.word-item.word-item--add-new-word
+          {:hx-trigger "click"
+           :hx-target "#words-list"
+           :hx-get (cond-> "/learning-pairs"
+                     (or (some-str? search) (pos? words-count)) (str "?")
+                     (some-str? search) (str "search=" search)
+                     (and (some-str? search) (pos? words-count)) (str "&")
+                     (pos? words-count) (str "words-count=" (+ words-count words-list:page)))}
+          [:b
+           "Загрузить больше"]
+          [:span.arrow-down-icon]])))))
 
 
 (def loaders
@@ -446,26 +505,33 @@
              :flex-direction "column"
              :overflow "hidden"
              :width "100%"}}
+    [:input#words-loaded
+     {:type "hidden"
+      :name "words-loaded"
+      :value words-list:page}]
     [:form.words__search
      [:div.input
       [:span.input__search-icon]
       [:input.input__input-area.input__input-area--icon
        {:autocomplete "off"
-        :hx-get "/search"
+        :hx-get "/learning-pairs"
         :placeholder "Поиск слова"
         :hx-target "#words-list"
-        :hx-swap "outerHTML"
+        :hx-swap "innerHTML"
         :hx-trigger "input changed delay:500ms, keyup[key=='Enter']"
         :name "search"}]]]
     [:hr
      {:style {:width "100%", :margin 0}}]
-    (words-list)]
+    [:ul.words-list.list
+     {:id "words-list"}
+     (words-list-items
+      {:words-count words-list:page})]]
    [:hr
     {:style {:width "100%", :margin 0}}]
    [:form.new-word-form
-    {:hx-on::after-request "if(event.detail.successful) {this.reset(); htmx.find('#new-word-value').focus()}"
-     :hx-post "/learning-pair"
-     :hx-swap "outerHTML"
+    {:hx-on::after-request "if(event.detail.successful) {this.reset(); htmx.find('#new-word-value').focus()}; console.log(event)"
+     :hx-post "/learning-pairs"
+     :hx-swap "afterbegin"
      :hx-target "#words-list"}
     [:label.new-word-form__label
      "Новое слово"
@@ -485,7 +551,7 @@
        :autocapitalize "off"
        :autocomplete "off"
        :autocorrect "off"
-       :lang "de"
+       :lang "ru"
        :name "translation"}]]
     [:button.big-button.blue-button
      {:type "submit"}
@@ -652,41 +718,49 @@
                                                         (current-progress-prozent))
                                                  :status 200}
 
-    [:post "/learning-pair"]                    (let [{:keys [value translation]} (:params req)]
-                                                  (if (or
-                                                       (not (string? value)) (str/blank? value)
-                                                       (not (string? translation)) (str/blank? translation))
-                                                    {:body (cond-> (list)
-                                                             (or (not (string? value)) (str/blank? value))
-                                                             (conj
-                                                              [:input.new-word-form__input.new-word-form__input--error
-                                                               {:hx-on:change "htmx.find('#new-word-translation').focus()"
-                                                                :hx-swap-oob "true"
-                                                                :id "new-word-value"
-                                                                :name "value"}])
+    [:post "/learning-pairs"]                    (let [{:keys [value translation]} (:params req)]
+                                                   (if (or
+                                                        (not (string? value)) (str/blank? value)
+                                                        (not (string? translation)) (str/blank? translation))
+                                                     {:body (cond-> (list)
+                                                              (or (not (string? value)) (str/blank? value))
+                                                              (conj
+                                                               [:input.new-word-form__input.new-word-form__input--error
+                                                                {:hx-on:change "htmx.find('#new-word-translation').focus()"
+                                                                 :hx-swap-oob "true"
+                                                                 :id "new-word-value"
+                                                                 :name "value"}])
 
-                                                             (or (not (string? translation)) (str/blank? translation))
-                                                             (conj
-                                                              [:input.new-word-form__input.new-word-form__input--error
-                                                               {:id "new-word-translation"
-                                                                :hx-swap-oob "true"
-                                                                :name "translation"}]))
-                                                     :status 400}
-                                                    (do
-                                                      (add-learning-pair! value translation)
-                                                      {:body (words-list)
-                                                       :status 200})))
-    [:put "/learning-pair"] {:status 200
-                             :body (let [{:keys [value translation]} (:params req)
-                                         original-value (get-in req [:headers "hx-target"])]
-                                     (remove-learning-pair! original-value)
-                                     (add-learning-pair! value translation)
-                                     (words-list-item
-                                      {:word-value value
-                                       :word-translation translation
-                                       :retention-level 100}))}
-    [:get "/search"]        {:body (words-list {:search (-> req :params :search)})
-                             :status 200}))
+                                                              (or (not (string? translation)) (str/blank? translation))
+                                                              (conj
+                                                               [:input.new-word-form__input.new-word-form__input--error
+                                                                {:id "new-word-translation"
+                                                                 :hx-swap-oob "true"
+                                                                 :name "translation"}]))
+                                                      :status 400}
+                                                     (do
+                                                       (add-learning-pair! value translation)
+                                                       {:body (words-list-item
+                                                               {:word-value value
+                                                                :word-translation translation
+                                                                :retention-level 100})
+                                                        :status 200})))
+    [:put "/learning-pairs"] (let [{:keys [value translation]} (:params req)
+                                   original-word (unescape-id (get-in req [:headers "hx-target"]))]
+                               (remove-learning-pair! original-word)
+                               (add-learning-pair! value translation)
+                               {:status 200
+                                :body (words-list-item
+                                       {:word-value value
+                                        :word-translation translation
+                                        :retention-level 100})})
+    [:get "/learning-pairs"] {:status 200
+                              :body (do
+                                      (prn {:words-count (-> req :params :words-count (or "") parse-long)
+                                            :search (-> req :params :search)})
+                                      (words-list-items
+                                       {:words-count (-> req :params :words-count (or "") parse-long)
+                                        :search (-> req :params :search)}))}))
 
 
 (defn wrap-hiccup

@@ -19,6 +19,13 @@
   :translation "отпускать, освобождать",
   :word "entlassen",
   :reviews [true]},
+ "stoßen "
+ {:created-at 1740331874,
+  :last-reviewed 1740331874,
+  :forgetting-rate 0.00231,
+  :translation "толкать",
+  :word "stoßen ",
+  :reviews []},
  "der Wertgegenstand"
  {:created-at 1740172003,
   :last-reviewed 1740172003,
@@ -27,12 +34,12 @@
   :word "der Wertgegenstand",
   :reviews []},
  "bedingen"
- {:created-at 1740170538,
-  :last-reviewed 1740173223,
-  :forgetting-rate 0.002657983154600267,
-  :translation "обуславливать",
+ {:created-at 1740327474,
+  :last-reviewed 1740327474,
+  :forgetting-rate 0.00231,
+  :translation "требовать, обуславливать",
   :word "bedingen",
-  :reviews [false false true]},
+  :reviews []},
  "das Risiko"
  {:created-at 1740172096,
   :last-reviewed 1740172096,
@@ -46,6 +53,13 @@
   :forgetting-rate 0.00231,
   :translation "насмехаться",
   :word "auslachen",
+  :reviews []},
+ "aufpassen"
+ {:created-at 1740329961,
+  :last-reviewed 1740329961,
+  :forgetting-rate 0.00231,
+  :translation "следить, наблюдать",
+  :word "aufpassen",
   :reviews []},
  "untereinander"
  {:created-at 1740172126,
@@ -96,6 +110,13 @@
   :translation "проводить, коротать (время)",
   :word "verbringen",
   :reviews [true true]},
+ "die Verpflegung "
+ {:created-at 1740331695,
+  :last-reviewed 1740331695,
+  :forgetting-rate 0.00231,
+  :translation "питание",
+  :word "die Verpflegung ",
+  :reviews []},
  "umbringen"
  {:created-at 1740171748,
   :last-reviewed 1740171748,
@@ -112,11 +133,11 @@
   :reviews []},
  "der Gegensatz"
  {:created-at 1740171476,
-  :last-reviewed 1740177567,
-  :forgetting-rate 0.005457767277023036,
+  :last-reviewed 1740326353,
+  :forgetting-rate 0.008024873634295044,
   :translation "контраст, противоречие",
   :word "der Gegensatz",
-  :reviews [false false true]},
+  :reviews [false false true false true]},
  "der Gefallen"
  {:created-at 1740171384,
   :last-reviewed 1740176330,
@@ -243,6 +264,13 @@
   :translation "взаимный",
   :word "gegenseitig",
   :reviews []},
+ "die Bewertung"
+ {:created-at 1740327197,
+  :last-reviewed 1740327197,
+  :forgetting-rate 0.00231,
+  :translation "оценка, отзыв",
+  :word "die Bewertung",
+  :reviews []},
  "erniedrigen"
  {:created-at 1740171850,
   :last-reviewed 1740171850,
@@ -264,6 +292,13 @@
   :translation "непостижимый",
   :word "unfassbar",
   :reviews [false true]},
+ "bisherigen "
+ {:created-at 1740326779,
+  :last-reviewed 1740326779,
+  :forgetting-rate 0.00231,
+  :translation "доселе, предыдущий",
+  :word "bisherigen ",
+  :reviews []},
  "der Geschlechtsverkehr"
  {:created-at 1740171443,
   :last-reviewed 1740176115,
@@ -277,6 +312,13 @@
   :forgetting-rate 0.00231,
   :translation "опускать",
   :word "senken",
+  :reviews []},
+ "bisherig "
+ {:created-at 1740327695,
+  :last-reviewed 1740327695,
+  :forgetting-rate 0.00231,
+  :translation "доселе, предыдущий",
+  :word "bisherig ",
   :reviews []},
  "vertrauen"
  {:created-at 1740172166,
@@ -356,12 +398,12 @@
   :word "zusammenbrechen",
   :reviews []},
  "einzig"
- {:created-at 1740140730,
-  :last-reviewed 1740152284,
-  :forgetting-rate 8.34244019626042E-5,
+ {:created-at 1740220247,
+  :last-reviewed 1740220247,
+  :forgetting-rate 0.00231,
   :translation "единственный",
   :word "einzig",
-  :reviews [true]},
+  :reviews []},
  "die Ausdauer"
  {:created-at 1740170598,
   :last-reviewed 1740177518,
@@ -376,6 +418,13 @@
   :translation "способ, манера",
   :word "die Weise",
   :reviews [true]},
+ "ahnen"
+ {:created-at 1740330926,
+  :last-reviewed 1740330926,
+  :forgetting-rate 0.00231,
+  :translation "предчувствовать, догадываться",
+  :word "ahnen",
+  :reviews []},
  "die Schwerstarbeit"
  {:created-at 1740171896,
   :last-reviewed 1740171896,
@@ -383,12 +432,26 @@
   :translation "тяжёлая работа",
   :word "die Schwerstarbeit",
   :reviews []},
+ "der Antrieb"
+ {:created-at 1740330867,
+  :last-reviewed 1740330867,
+  :forgetting-rate 0.00231,
+  :translation "двигатель, привод",
+  :word "der Antrieb",
+  :reviews []},
  "wagen"
  {:created-at 1740171833,
   :last-reviewed 1740171833,
   :forgetting-rate 0.00231,
   :translation "осмелиться",
   :word "wagen",
+  :reviews []},
+ "die Neubewertung"
+ {:created-at 1740327304,
+  :last-reviewed 1740327304,
+  :forgetting-rate 0.00231,
+  :translation "переоценка",
+  :word "die Neubewertung",
   :reviews []},
  "foltern"
  {:created-at 1740171537,
@@ -432,6 +495,13 @@
   :translation "таять, плавиться",
   :word "schmelzen",
   :reviews [true]},
+ "es kommt nicht dazu"
+ {:created-at 1740328273,
+  :last-reviewed 1740328273,
+  :forgetting-rate 0.00231,
+  :translation "этого не произойдёт",
+  :word "es kommt nicht dazu",
+  :reviews []},
  "lauern"
  {:created-at 1740171863,
   :last-reviewed 1740171863,
@@ -483,11 +553,18 @@
   :reviews []},
  "verprügeln"
  {:created-at 1740171459,
-  :last-reviewed 1740177498,
-  :forgetting-rate 0.0031902992804563094,
+  :last-reviewed 1740325190,
+  :forgetting-rate 0.005658505517655271,
   :translation "избивать",
   :word "verprügeln",
-  :reviews [false true]},
+  :reviews [false true false true]},
+ "der Lohn"
+ {:created-at 1740332107,
+  :last-reviewed 1740332107,
+  :forgetting-rate 0.00231,
+  :translation "вознаграждение",
+  :word "der Lohn",
+  :reviews []},
  "der Vorteil"
  {:created-at 1740172213,
   :last-reviewed 1740172213,
