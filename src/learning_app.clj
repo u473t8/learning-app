@@ -1,14 +1,22 @@
-(require '[cheshire.core :as cheshire]
-         '[clojure.string :as str]
-         '[clojure.edn :as edn]
-         '[clojure.math :as math]
-         '[org.httpkit.server :as srv]
-         '[org.httpkit.client :as client]
-         '[hiccup2.core :as hiccup]
-         '[clojure.pprint :as pprint]
-         '[clojure.java.io :as io]
-         '[ring.middleware.keyword-params :as middleware.keyword-params]
-         '[ring.middleware.params :as middleware.params])
+(ns learning-app
+  (:require
+   [cheshire.core :as cheshire]
+   [clojure.edn :as edn]
+   [clojure.java.io :as io]
+   [clojure.math :as math]
+   [clojure.pprint :as pprint]
+   [clojure.string :as str]
+   [hiccup2.core :as hiccup]
+   [icons :as icons]
+   [org.httpkit.client :as client]
+   [org.httpkit.server :as srv]
+   [ring.middleware.content-type :as middleware.content-type]
+   [ring.middleware.keyword-params :as middleware.keyword-params]
+   [ring.middleware.params :as middleware.params]
+   [ring.middleware.resource :as middleware.resource]
+   [ring.middleware.session :as middleware.session]
+   [ring.middleware.session.memory :as memory]
+   [tools.log :as log]))
 
 
 (def port 8083)
@@ -70,6 +78,30 @@
 (defn unescape-id
   [string]
   (str/replace string #"_" " "))
+
+
+;;
+;; Users
+;;
+
+(def users-store
+  {"u473t8" {:password (hash "isKLUh9-polh1!@#4")
+             :login "u473t8"}})
+
+
+(defn password-valid?
+  [user password]
+  (= (get-in users-store [user :password]) (hash password)))
+
+;;
+;; User Session
+;;
+
+
+(def user-sessions (atom {}))
+
+(comment
+  user-sessions)
 
 
 ;;
@@ -312,6 +344,11 @@
     (swap! session-state assoc :session-length (count challenges))))
 
 
+(defn session-running?
+  []
+  (-> @session-state :challenges seq boolean))
+
+
 (defn session-length
   []
   (:session-length @session-state))
@@ -381,8 +418,8 @@
     [:meta {:name "htmx-config" :content "{\"responseHandling\": [{\"code\":\"400\", \"swap\": true, \"error\": true}, {\"code\":\"200\", \"swap\": true, \"error\": false}] }"}]
     [:link {:rel "shortcut icon" :href "data:,"}]
     [:link {:rel "apple-touch-icon" :href "data:,"}]
-    [:link {:href "https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap"
-            :rel "stylesheet"}]
+    [:link {:href "fonts/Nunito/nunito-v26-cyrillic_latin-regular.woff2" :as "font" :rel "preload" :type "font/woff2" :crossorigin "true"}]
+    [:link {:href "fonts/Nunito/nunito-v26-cyrillic_latin-700.woff2" :as "font" :rel "preload" :type "font/woff2" :crossorigin "true"}]
     [:link {:id "styles" :href "styles.css" :rel "stylesheet"}]
     [:script {:src "https://unpkg.com/htmx.org@2.0.4" :type "application/javascript"}]
     [:title "Learning"]]
@@ -397,7 +434,7 @@
    {:id item-id}
    [:form
     {:hx-put "/learning-pairs"
-     :hx-on::before-request "console.log(event)"
+     :hx-on:htmx:before-request "console.log(event)"
      :hx-trigger "change"
      :hx-target (str "#" item-id)
      :hx-swap "outerHTML"}
@@ -493,12 +530,22 @@
        [:div.loader__text
         loader])]]
    [:div
-    {:style {:padding "24px"}}
+    {:style {:padding "24px"
+             :display "flex"
+             :align-items "center"
+             :justify-content "space-around"
+             :width "100%"}}
+    (when (session-running?)
+      [:button.big-button.red-button
+       {:hx-delete "/learning-session"}
+       "ЗАКОНЧИТЬ"])
     [:button.big-button.green-button
      {:hx-get "/learning-session"
       :hx-indicator "#loader"
       :hx-push-url "true"}
-     "НАЧАТЬ"]]
+     (if (session-running?)
+       "ПРОДОЛЖИТЬ"
+       "НАЧАТЬ")]]
    [:section.words
     {:style {:flex 1
              :display "flex"
@@ -529,7 +576,7 @@
    [:hr
     {:style {:width "100%", :margin 0}}]
    [:form.new-word-form
-    {:hx-on::after-request "if(event.detail.successful) {this.reset(); htmx.find('#new-word-value').focus()}; console.log(event)"
+    {:hx-on:htmx:after-request "if(event.detail.successful) {this.reset(); htmx.find('#new-word-value').focus()}; console.log(event)"
      :hx-post "/learning-pairs"
      :hx-swap "afterbegin"
      :hx-target "#words-list"}
@@ -565,7 +612,7 @@
 (defn challenge-text
   []
   [:div.text-plate
-   {:hx-on::load "let user_input = htmx.find('#user-input'); user_input.disabled = false; user_input.focus()"}
+   {:hx-on:htmx:load "let user_input = htmx.find('#user-input'); user_input.disabled = false; user_input.focus()"}
    (next-challenge!)])
 
 (defn text-input
@@ -591,7 +638,6 @@
    "ПРОВЕРИТЬ"])
 
 
-
 ;; Events:
 ;; - new-challenge
 ;; - incorrect-submission
@@ -612,8 +658,8 @@
    [:form.learning-session__body
     {:id "challenge-form"
      :hx-post "/learning-session/challenge"
-     :hx-on::before-on-load "console.log(event)"
-     :hx-on::before-request "htmx.find('textarea').disabled = true"
+     :hx-on:htmx:before-on-load "console.log(event)"
+     :hx-on:htmx:before-request "htmx.find('textarea').disabled = true"
      :hx-swap "none"}
     [:div#challenge.learning-session__challenge
      {:hx-get "/learning-session/challenge/text"
@@ -640,26 +686,72 @@
      (submit-challenge)]]])
 
 
-(defn- home-routes [{:keys [:request-method :uri] :as req}]
-  (println [request-method uri])
-  (case [request-method uri]
-    [:get "/icons.svg"]  {:body    (slurp "icons.svg")
-                          :headers {"Content-Type" "image/svg+xml"}
-                          :status  "200"}
-    [:get "/styles.css"] {:body    (slurp "styles.css")
-                          :headers {"Content-Type" "text/plain"}
-                          :status  "200"}
+(defn login
+  []
+  [:div.login-page
+   [:form.login-page__form
+    {:hx-post "/login"
+     :hx-indicator "#loader"
+     :hx-swap "none"}
+    [:h1.login-page__header
+     "Вход"]
+    [:div.login-page__input.input
+     [:input.login-page__input.input__input-area
+      {:id "email"
+       :type "text"
+       :autocomplete "email"
+       :name "user"
+       :placeholder "Email или имя пользователя"}]
+     [:button.input__clear-button
+      {:hx-on:click "htmx.find('#email').value = ''; htmx.find('#email').focus()"}
+      icons/cancel]]
+    [:div.login-page__input.input
+     [:input.input__input-area
+      {:id "password"
+       :type "password"
+       :autocomplete "current-password"
+       :name "password"
+       :placeholder "Пароль"}]]
+    [:div.login-page__error-message
+     {:id "error-message"}]
+    [:button.big-button.blue-button
+     {:type "submit"}
+     [:div.big-button__loader.htmx-indicator
+      {:id "loader"}]
+     [:span.big-button__label
+      "ВХОД"]]]])
 
-    [:get "/"] (if (get-in req [:headers "hx-request"])
+(defn routes [{:keys [:request-method :uri] :as request}]
+  (log/info [(:remote-addr request) [request-method uri]])
+  (case [request-method uri]
+    [:get "/"] (if (get-in request [:headers "hx-request"])
                  {:body    (home)
                   :headers {"HX-Retarget" "body"}
                   :status  200}
                  {:body   (page (home))
                   :status 200})
 
+    [:get "/login"] (if (get-in request [:headers "hx-request"])
+                      {:body    (login)
+                       :headers {"HX-Retarget" "body"}
+                       :status  200}
+                      {:body   (page (login))
+                       :status 200})
+
+    [:post "/login"] (let [{:keys [:user :password]} (:params request)]
+                       (if (password-valid? user password)
+                         {:headers {"HX-Location" "/"
+                                    "HX-Push-Url" "true"}
+                          :session {:user user}}
+                         {:status 400
+                          :headers {"HX-Retarget" "#error-message"
+                                    "HX-Reswap" "textContent"}
+                          :body "Неверный пароль. Повторите попытку."}))
+
     [:get "/learning-session"] (do
-                                 (start-learning-session!)
-                                 (if (get-in req [:headers "hx-request"])
+                                 (when-not (session-running?)
+                                   (start-learning-session!))
+                                 (if (get-in request [:headers "hx-request"])
                                    {:body    (learning-session)
                                     :headers {"HX-Retarget" "body"}
                                     :status  200}
@@ -670,7 +762,7 @@
                                         (quit-learning-session!)
                                         {:headers {"HX-Location" "/"
                                                    "HX-Push-Url" "true"}})
-    [:get "/learning-session/action"] (let [event (-> req :params :event)]
+    [:get "/learning-session/action"] (let [event (-> request :params :event)]
                                         {:body (case event
                                                  "challenge-fail" [:button.big-button.red-button
                                                                    {:autofocus "true"
@@ -701,7 +793,7 @@
                                                         {:hx-swap-oob "innerHTML"}
                                                         (challenge-text)]}
 
-    [:post "/learning-session/challenge"]       (let [user-input (-> req :params :user-input)]
+    [:post "/learning-session/challenge"]       (let [user-input (-> request :params :user-input)]
                                                   (if (review-user-input! user-input)
                                                     {:headers (if (has-next-challenge?)
                                                                 {"HX-Trigger" "new-challenge"}
@@ -718,7 +810,7 @@
                                                         (current-progress-prozent))
                                                  :status 200}
 
-    [:post "/learning-pairs"]                    (let [{:keys [value translation]} (:params req)]
+    [:post "/learning-pairs"]                    (let [{:keys [value translation]} (:params request)]
                                                    (if (or
                                                         (not (string? value)) (str/blank? value)
                                                         (not (string? translation)) (str/blank? translation))
@@ -745,8 +837,8 @@
                                                                 :word-translation translation
                                                                 :retention-level 100})
                                                         :status 200})))
-    [:put "/learning-pairs"] (let [{:keys [value translation]} (:params req)
-                                   original-word (unescape-id (get-in req [:headers "hx-target"]))]
+    [:put "/learning-pairs"] (let [{:keys [value translation]} (:params request)
+                                   original-word (unescape-id (get-in request [:headers "hx-target"]))]
                                (remove-learning-pair! original-word)
                                (add-learning-pair! value translation)
                                {:status 200
@@ -755,28 +847,46 @@
                                         :word-translation translation
                                         :retention-level 100})})
     [:get "/learning-pairs"] {:status 200
-                              :body (do
-                                      (prn {:words-count (-> req :params :words-count (or "") parse-long)
-                                            :search (-> req :params :search)})
-                                      (words-list-items
-                                       {:words-count (-> req :params :words-count (or "") parse-long)
-                                        :search (-> req :params :search)}))}))
+                              :body (words-list-items
+                                     {:words-count (-> request :params :words-count (or "") parse-long)
+                                      :search (-> request :params :search)})}))
 
 
 (defn wrap-hiccup
   [handler]
   (fn [request]
     (let [response (handler request)]
-      (cond-> response
-        (-> response :body sequential?)
-        (update :body #(-> % hiccup/html str))))))
+      (if (-> response :body sequential?)
+        (-> response
+            (update :body #(-> % hiccup/html str))
+            (update :headers assoc "Content-Type" "text/html"))
+        response))))
+
+
+(defn wrap-login
+  [handler]
+  (fn [{:keys [session uri] :as request}]
+    (cond
+      (and (empty? session) (not= uri "/login"))
+      {:status 302
+       :headers {"Location" "/login"}}
+
+      (and (seq session) (= uri "/login"))
+      {:status 302
+       :headers {"Location" "/"}}
+
+      :else (handler request))))
 
 
 (def app
-  (-> home-routes
-      wrap-hiccup
-      middleware.keyword-params/wrap-keyword-params
-      middleware.params/wrap-params))
+  (-> routes
+      (wrap-hiccup)
+      (wrap-login)
+      (middleware.resource/wrap-resource "public")
+      (middleware.content-type/wrap-content-type)
+      (middleware.keyword-params/wrap-keyword-params)
+      (middleware.params/wrap-params)
+      (middleware.session/wrap-session {:store (memory/memory-store user-sessions)})))
 
 
 (defonce server (atom nil))
@@ -795,15 +905,20 @@
       (reset! server nil))))
 
 
-(let [url (str "http://localhost:" port "/")]
-  (reset! learning-pairs-indexed (read-db))
-  (add-watch learning-pairs-indexed :save-on-modify (fn [_ _ current-vocabulary new-vocabulary]
-                                          (when (not= current-vocabulary new-vocabulary)
-                                            (save-db! new-vocabulary))))
-  (stop-server!)
-  (start-server! #'app port)
-  (println "serving" url))
+(defn -main
+  []
+  (let [url (str "http://localhost:" port "/")]
+   (reset! learning-pairs-indexed (read-db))
+   (add-watch learning-pairs-indexed :save-on-modify (fn [_ _ current-vocabulary new-vocabulary]
+                                                       (when (not= current-vocabulary new-vocabulary)
+                                                         (save-db! new-vocabulary))))
+   (stop-server!)
+   (start-server! #'app port)
+   (println "serving" url)))
+
 
 (comment
-  @(promise))
+  (-main)
+  (require '[clojure.repl.deps :as deps])
+  (deps/sync-deps))
 
