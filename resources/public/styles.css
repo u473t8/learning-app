@@ -475,9 +475,9 @@ textarea {
     box-sizing: inherit;
     font-family: Nunito, sans-serif;
     outline: none;
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    user-select: none
+    /* -webkit-user-select: none; */
+    /* -moz-user-select: none; */
+    /* user-select: none */
 }
 
 @media (min-width: 700px) {
@@ -578,7 +578,6 @@ h2 {
 }
 
 h2 {
-    color: rgb(var(--color-black-text));
     font-size: 24px;
     line-height: 26px;
     margin: 0 0 25px
@@ -781,7 +780,6 @@ Home Page
     left: 0;
     min-height: 460px;
     overflow: hidden;
-    padding: 24px 16px;
     position: absolute;
     top: 0;
     width: 100%;
@@ -808,6 +806,7 @@ Home Page
     grid-template-columns: min-content 1fr;
     grid-gap: 24px;
     margin: 0 auto;
+    padding: 24px 16px;
     width: 100%;
     max-width: 1080px;
 }
@@ -879,6 +878,7 @@ Home Page
     grid-template-rows: minmax(0, 1fr);
     height: 100%;
     justify-content: center;
+    padding: 0 16px;
     text-align: center;
     width: 100%;
 }
@@ -954,14 +954,23 @@ Home Page
 }
 
 .learning-session__footer {
-    --margin-x: calc(50% - 500px);
+    --padding-x: calc(50% - 500px);
     display: flex;
     flex-direction: column;
     gap: 24px;
-    padding-top: 24px;
+    padding: 24px 16px;
     position: relative;
     width: 100%;
-    max-width: 1000px;
+}
+
+.learning-session__footer--success {
+    background-color: rgb(var(--color-sea-sponge));
+    color: rgb(var(--color-tree-frog));
+}
+
+.learning-session__footer--error {
+    background-color: rgb(var(--color-walking-fish));
+    color: rgb(var(--color-fire-ant));
 }
 
 .learning-session__footer.htmx-added {
@@ -970,7 +979,7 @@ Home Page
 
 @media (min-width: 1000px) {
     .learning-session__footer {
-        margin-left: var(--margin-x);
+        padding: 24px var(--padding-x);
     }
 }
 
@@ -997,25 +1006,23 @@ Home Page
 }
 
 .challenge-answer {
-    display: none;
+    display: grid;
     grid-gap: 5px;
     grid-auto-flow: row;
     line-height: 22px;
 }
 
-.challenge-answer:has(.challenge-answer__body) {
-    display: grid;
-}
-
 .challenge-answer__header {
-    color: rgb(var(--color-fire-ant));
     margin: 0;
 }
 
 .challenge-answer__body {
-    color: rgb(var(--color-fire-ant));
     font-size: 15px;
     font-weight: 500 !important;
+}
+
+.challenge-success {
+    margin: 0;
 }
 
 .home {
@@ -1516,13 +1523,6 @@ Home Page
     border-radius: 50%;
     animation: l5 1s infinite linear alternate;
 }
-/* HTML: <div class="loader"></div> */
-.loader {
-    width: 15px;
-    aspect-ratio: 1;
-    border-radius: 50%;
-    animation: l5 1s infinite linear alternate;
-}
 
 
 @keyframes l5 {
@@ -1531,82 +1531,3 @@ Home Page
     66% {box-shadow: 13px 0 rgb(from white r g b / 0.5), -13px 0 white;                       background: rgb(from white r g b / 0.5)}
     100%{box-shadow: 13px 0 rgb(from white r g b / 0.5), -13px 0 white;                       background: white}
 }
-
-
-
-
-/* } */
-/*  ._99iuQ .NHKbl { */
-/*      background-color: currentcolor; */
-/*      height: 8px; */
-/*      width: 8px; */
-/*  } */
-
-/*  ._3qoWj { */
-/*      animation-duration: 1.2s; */
-/*      animation-iteration-count: infinite; */
-/*      animation-name: _2xhhK, _3wL1o; */
-/*      animation-timing-function: ease-in-out; */
-/*  } */
-/*  .NHKbl { */
-/*      border-radius: 50%; */
-/*  } */
-
-
-/*  0% { */
-/*      opacity: 1; */
-/*  } */
-/*  33.3333% { */
-/*      opacity: .25; */
-/*  } */
-/*  66.6667% { */
-/*      opacity: .5; */
-/*  } */
-/*  100% { */
-/*      opacity: 1; */
-/*  } */
-
-/*  0% { */
-/*      opacity: .25; */
-/*  } */
-/*  33.3333% { */
-/*      opacity: .5; */
-/*  } */
-
-/*  66.6667% { */
-/*      opacity: 1; */
-/*  } */
-/*  100% { */
-/*      opacity: .25; */
-/*  } */
-
-/*  0% { */
-/*      opacity: .5; */
-/*  } */
-/*  33.3333% { */
-/*      opacity: 1; */
-/*  } */
-/*  66.6667% { */
-/*      opacity: .25; */
-/*  } */
-/*  100% { */
-/*      opacity: .5; */
-/*  } */
-
-
-
-
-
-
-/*  0% { */
-/*      transform: scale(.8); */
-/*  } */
-/*  33.3333% { */
-/*      transform: scale(1); */
-/*  } */
-/*  66.6667% { */
-/*      transform: scale(.8); */
-/*  } */
-/*  100% { */
-/*      transform: scale(.8); */
-/*  } */
