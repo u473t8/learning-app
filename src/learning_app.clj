@@ -7,7 +7,6 @@
    [clojure.pprint :as pprint]
    [clojure.string :as str]
    [hiccup2.core :as hiccup]
-   [hiccup.compiler :as hiccup.compiler]
    [icons :as icons]
    [org.httpkit.client :as client]
    [org.httpkit.server :as srv]
@@ -49,6 +48,15 @@
       (str/replace #"ö" "oe")
       (str/replace #"ü" "ue")
       (str/replace #"ß" "ss")))
+
+
+(defn normalize-index
+  [indexed-coll]
+  (reduce-kv
+   (fn [result k v]
+     (assoc result (normalize-german-text (name k)) v))
+   {}
+   indexed-coll))
 
 
 (defn prozent->color
@@ -116,7 +124,7 @@
    Generated sentences should align with language proficiency levels from A1 to C2, incorporating diverse grammatical structures (e.g., conditional clauses, subjunctive mood, etc.) as well as idioms, set phrases, and fixed expressions.
    The sentences should adhere to standard written and spoken German.
    - \"translation\" contains the Russian translation of the sentence.
-   - \"structure\" is a list of pairs, where each pair consists of a word from the sentence in its used form and its dictionary form. Exclude pairs for pronouns, particles, and prepositions.
+   - \"structure\" is a list of pairs, where each pair consists of a word from the sentence in its used form and its dictionary form. There should be a pair for each word in the sentence. Exclude pairs for funtction words, pronouns, particles, and prepositions. If a word in the sentence is a verb with separated prefix (and the prefix is actually separeted), the dictionary form of the whole verb should be provided both for separated prefix and root part of the verb, e.g [{'usedForm': 'komme', 'dictionaryForm': 'ankommen'}, {'usedForm': 'an', 'dictionaryForm': 'ankommen'}]
 Return only the JSON object without additional text.")
 
 
@@ -132,7 +140,7 @@ Return only the JSON object without additional text.")
             :messages [{:role "system"
                         :content system-prompt}
                        {:role "user"
-                        :content (str "Generate for input words: " (cheshire/generate-string words))}]
+                        :content (str "Generate for input words " (cheshire/generate-string words))}]
             :response_format {:type "json_schema"
                               :json_schema {:name "sentence_examples"
                                             :schema {:type "object"
@@ -144,13 +152,25 @@ Return only the JSON object without additional text.")
                                                                       :properties {"sentence" {:type "string"
                                                                                                :description "A German sentence using the word."}
                                                                                    "translation" {:type "string"
-                                                                                                  :description "Russian translation of the sentence."}}
+                                                                                                  :description "Russian translation of the sentence."}
+                                                                                   "structure" {:type  "array",
+                                                                                                :description  "A list of pairs containing the used word form and its dictionary form."
+                                                                                                :items {:type "object",
+                                                                                                        :properties  {:usedForm  {:type  "string",
+                                                                                                                                  :description  "The word in its used form."},
+                                                                                                                      :dictionaryForm  {:type  "string",
+                                                                                                                                        :description  "The dictionary form of the word."}}
+                                                                                                        :additionalProperties false
+                                                                                                        :required  ["usedForm", "dictionaryForm"]}}}
+
                                                                       :additionalProperties false
-                                                                      :required ["sentence" "translation"]}]))
+                                                                      :required ["sentence" "translation" "structure"]}]))
                                                      :additionalProperties false
                                                      :required words}
                                             :strict true}}
             :temperature 0})}))
+
+
 
 
 (defn parse-json
@@ -172,26 +192,42 @@ Return only the JSON object without additional text.")
 
 
 ;; With cache
-#_
-(defn sentence-examples [words]
-  (let [new-words (remove (cached-words) (map normalize-text words))
+(defn generate-examples
+  [words]
+  (let [new-words (remove (cached-words) (map normalize-german-text words))
         response (when (seq new-words)
                    @(make-api-request new-words))
         examples (-> response :body parse-json :choices first :message :content parse-json normalize-index)]
+    (clojure.pprint/pprint response)
     (swap! examples-cache merge examples)
-    (vals (select-keys @examples-cache words))))
+    (select-keys @examples-cache words)))
 
-
+(future (Thread/sleep 10000) (println "done") 100)
 ;; Without cache
-(defn sentence-examples [words]
-  (let [response @(make-api-request words)]
-    (-> response :body parse-json :choices first :message :content parse-json vals)))
+#_(defn generate-examples
+    [words]
+    (let [response @(make-api-request words)]
+      (-> response :body parse-json :choices first :message :content parse-json)))
 
 
 (comment
   (remove (cached-words) ["einzig" "trauen"])
-  (sentence-examples
+  (generate-examples
    ["einzig" "trauen"]))
+
+
+(defn generate-examples!
+  [words]
+  ;; Partitioning, otherwise too many tokens in generate request.
+  ;; For example 84 unpartitioned words becomes 504 tokens.
+  ;; Quota is 100 tokens per request.
+  (let [examples (reduce
+                  (fn [examples words]
+                    (merge examples (generate-examples words)))
+                  (edn/read-string (slurp "examples.edn"))
+                  (partition 4 words))]
+    (pprint/pprint examples (io/writer "examples.edn"))
+    (log/info (str "Generated examples for " (count words) "word"))))
 
 
 (defn example-value
@@ -314,6 +350,7 @@ Return only the JSON object without additional text.")
   {:challenges {}
    :current-challenge nil
    :user-answer nil
+   :learned-words []
    :submitted? false})
 
 
@@ -322,6 +359,14 @@ Return only the JSON object without additional text.")
 
 (comment
   (deref learning-session))
+
+
+(defn sentence-examples
+  [words]
+  (-> (slurp "examples.edn")
+      (edn/read-string)
+      (select-keys words)
+      (vals)))
 
 
 (defn start-learning-session!
@@ -338,6 +383,7 @@ Return only the JSON object without additional text.")
                     (for [example (sentence-examples words)]
                       {:text (example-translation example)
                        :answer (example-value example)
+                       :structure (:structure example)
                        :sentence? true}))
         challenge (rand-nth (seq challenges))]
 
@@ -351,34 +397,45 @@ Return only the JSON object without additional text.")
   (-> @learning-session :challenges seq boolean))
 
 
-(defn quit-learning-session!
+(defn finish-learning-session!
   []
+  (future
+    (generate-examples! (:learned-words @learning-session)))
   (reset! learning-session initial-state))
 
 
-(defn no-more-challenges?
+(defn last-challenge?
   [learning-session]
-  (-> learning-session :challenges empty?))
-
-
-(defn challenge-passed?
-  [learning-session]
-  (and (:submitted? learning-session)
-       (= (:user-answer learning-session)
-          (:answer (:current-challenge learning-session)))))
-
-
-(defn challenge-failed?
-  [learning-session]
-  (and (:submitted? learning-session)
-       (not= (:user-answer learning-session)
-             (:answer (:current-challenge learning-session)))))
+  (-> learning-session :challenges next nil?))
 
 
 (defn word-retained?
   [learning-session]
   (= (-> learning-session :user-answer normalize-german-text)
      (-> learning-session :current-challenge :answer normalize-german-text)))
+
+
+(defn challenge-passed?
+  [learning-session]
+  (and (:submitted? learning-session)
+       (word-retained? learning-session)))
+
+
+(defn challenge-failed?
+  [learning-session]
+  (and (:submitted? learning-session)
+       (not (word-retained? learning-session))))
+
+
+(defn submit-user-answer
+  [learning-session user-answer]
+  (-> learning-session
+      (assoc :user-answer user-answer)
+      (assoc :submitted? true)
+      (update :learned-words (fn [learned-words]
+                              (cond-> learned-words
+                                (word-retained? learning-session)
+                                (conj user-answer))))))
 
 
 (defn persist-learning-progress!
@@ -477,7 +534,7 @@ Return only the JSON object without additional text.")
         [:span.arrow-down-icon]]))))
 
 
-(def words-list:page 10)
+(def words-list:page 4)
 
 
 (defn words-list-items
@@ -521,7 +578,7 @@ Return only the JSON object without additional text.")
 (defn home
   []
   [:div.home
-   [:div#loader.loader.htmx-indicator
+   #_[:div#loader.loader.htmx-indicator
     [:div.loader__list
      {:style {"--items-count" (count loaders)}}
      (for [loader loaders]
@@ -603,7 +660,6 @@ Return only the JSON object without additional text.")
      "ДОБАВИТЬ"]]])
 
 
-
 ;;
 ;; Learning Session View
 ;;
@@ -654,7 +710,7 @@ Return only the JSON object without additional text.")
   [learning-session]
   (and
    (challenge-passed? learning-session)
-   (no-more-challenges? learning-session)))
+   (last-challenge? learning-session)))
 
 (defn- learning-session:progress [learning-session]
   [:div.progress-bar-value
@@ -679,8 +735,12 @@ Return only the JSON object without additional text.")
      (show-finish-button? learning-session)
      [:button.big-button.green-button
       {:autofocus "true"
-       :hx-delete "/learning-session"}
-      "ЗАКОНЧИТЬ"]
+       :hx-delete "/learning-session"
+       :hx-indicator "#loader"}
+      [:div.big-button__loader.htmx-indicator
+       {:id "loader"}]
+      [:span.big-button__label
+       "ЗАКОНЧИТЬ"]]
 
      (:submitted? learning-session)
      [:button.big-button
@@ -688,26 +748,35 @@ Return only the JSON object without additional text.")
        :class (if (challenge-passed? learning-session)
                 "green-button"
                 "red-button")
-       :hx-trigger "click"
+       :hx-indicator "#loader"
        :hx-post "/learning-session/advance"
-       :hx-target "#footer"
-       :hx-swap "outerHTML"
        :hx-select "#footer"
-       :hx-select-oob "#challenge"}
-      "ДАЛЕЕ"]
+       :hx-select-oob "#challenge"
+       :hx-swap "outerHTML"
+       :hx-target "#footer"
+       :hx-trigger "click"}
+      [:div.big-button__loader.htmx-indicator
+       {:id "loader"}]
+      [:span.big-button__label
+       "ДАЛЕЕ"]]
 
      :else
      [:button.big-button.green-button
       {:form "challenge-form"
        :type "submit"}
-      "ПРОВЕРИТЬ"])])
+      [:div.big-button__loader.htmx-indicator
+       {:id "loader"}]
+      [:span.big-button__label
+       "ПРОВЕРИТЬ"]])])
 
+(show-finish-button? @learning-session)
+(last-challenge? @learning-session)
 
 (defn- learning-session:challenge-view
   [learning-session]
   [:div.learning-session__challenge
    {:id "challenge"
-    :hx-on:htmx:load "htmx.closest(this, 'form').reset(); htmx.find('textarea').disabled = false; htmx.find('textarea').focus()"}
+    :hx-on:htmx:load "htmx.closest(this, 'form').reset(); htmx.find('textarea').focus()"}
    [:div.text-plate
     (challenge-text learning-session)]])
 
@@ -729,11 +798,10 @@ Return only the JSON object without additional text.")
    [:form.learning-session__body
     {:id "challenge-form"
      :hx-patch "/learning-session"
-     :hx-on:htmx:before-request "htmx.find(\"button[type='submit']\").disabled = true; htmx.find('textarea').disabled = true"
-     :hx-target "#footer"
-     :hx-select "#footer"
-     :hx-select-oob "#user-answer, #progress"
-     :hx-swap "outerHTML"}
+     :hx-select-oob "#footer, #progress"
+     :hx-disabled-elt "textarea, button[type='submit']"
+     :hx-indicator "#loader"
+     :hx-swap "none"}
     (learning-session:challenge-view
      learning-session)
     [:div.learning-session__user-input
@@ -838,10 +906,8 @@ Return only the JSON object without additional text.")
 
     [:patch "/learning-session"]
     (let [{:keys [:user-answer]} (:params request)]
-      (log/info (:params request))
       (cond
-        (some? user-answer) (let [learning-session (-> learning-session
-                                                       (swap! assoc :user-answer user-answer :submitted? true))]
+        (some? user-answer) (let [learning-session (swap! learning-session submit-user-answer user-answer)]
                               (persist-learning-progress! learning-session)
                               {:body (list
                                       (when (challenge-passed? learning-session)
@@ -851,7 +917,7 @@ Return only the JSON object without additional text.")
 
     [:delete "/learning-session"]
     (do
-      (quit-learning-session!)
+      (finish-learning-session!)
       {:headers {"HX-Location" "/"
                  "HX-Push-Url" "true"}})
 
@@ -975,7 +1041,11 @@ Return only the JSON object without additional text.")
 
 (comment
   (-main)
+
+  (generate-examples! (keys @learning-pairs-indexed))
+
   (require '[clojure.repl.deps :as deps])
+
   (deps/sync-deps))
 
 
