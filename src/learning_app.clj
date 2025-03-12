@@ -7,7 +7,9 @@
    [clojure.pprint :as pprint]
    [clojure.string :as str]
    [hiccup2.core :as hiccup]
+   [honey.sql :as sql]
    [icons :as icons]
+   [next.jdbc :as jdbc]
    [org.httpkit.client :as client]
    [org.httpkit.server :as srv]
    [ring.middleware.content-type :as middleware.content-type]
@@ -15,7 +17,7 @@
    [ring.middleware.params :as middleware.params]
    [ring.middleware.resource :as middleware.resource]
    [ring.middleware.session :as middleware.session]
-   [ring.middleware.session.memory :as memory]
+   [ring.middleware.session.store :as session.store]
    [tools.log :as log]))
 
 
@@ -78,32 +80,6 @@
 (defn unescape-id
   [string]
   (str/replace string #"_" " "))
-
-
-;;
-;; Users
-;;
-
-(def users-store
-  {"u473t8" {:password (hash "isKLUh9-polh1!@#4")
-             :login "u473t8"}})
-
-
-(defn password-valid?
-  [user password]
-  (let [password (str/trim password)]
-    (= (get-in users-store [user :password]) (hash password))))
-
-
-;;
-;; User Session
-;;
-
-
-(defonce user-sessions (atom {}))
-
-(comment
-  user-sessions)
 
 
 ;;
@@ -202,7 +178,6 @@ Return only the JSON object without additional text.")
     (swap! examples-cache merge examples)
     (select-keys @examples-cache words)))
 
-(future (Thread/sleep 10000) (println "done") 100)
 ;; Without cache
 #_(defn generate-examples
     [words]
@@ -227,7 +202,7 @@ Return only the JSON object without additional text.")
                   (edn/read-string (slurp "examples.edn"))
                   (partition 4 words))]
     (pprint/pprint examples (io/writer "examples.edn"))
-    (log/info (str "Generated examples for " (count words) "word"))))
+    (log/info (str "Generated examples for " (count words) " words"))))
 
 
 (defn example-value
@@ -243,6 +218,10 @@ Return only the JSON object without additional text.")
 ;;
 ;; DB
 ;;
+
+(def db-spec
+  {:dbtype "sqlite", :dbname "app.db"})
+
 
 (def db-file "vocabulary.edn")
 
@@ -263,6 +242,7 @@ Return only the JSON object without additional text.")
 (defn learning-pairs
   []
   (vals @learning-pairs-indexed))
+
 
 (defn add-learning-pair!
   [value translation]
@@ -340,9 +320,38 @@ Return only the JSON object without additional text.")
 
 
 ;;
-;; Learning Session
+;; Users
 ;;
 
+(defn user-id
+  [db-connection user-name password]
+  (let [user (jdbc/execute-one! db-connection ["select id from users where name = ? and password = ? " user-name (hash password)])]
+    (:id user)))
+
+
+;;
+;; User Session
+;;
+
+
+(deftype Sessions [db-connection]
+  session.store/SessionStore
+  (read-session [_ token]
+    (cheshire/parse-string
+     (:value (jdbc/execute-one! db-connection (sql/format {:select :value, :from :sessions, :where [:= :token token]})))
+     true))
+  (write-session [_ token value]
+    (let [token (or token (str (random-uuid)))]
+      (jdbc/execute! db-connection (sql/format {:insert-into :sessions, :columns [:token :value], :values [[token, [:json (cheshire/generate-string value)]]]}))
+      token))
+  (delete-session [_ token]
+    (jdbc/execute! db-connection (sql/format {:delete-from :sessions, :where [:= :token token]}))
+    nil))
+
+
+;;
+;; Learning Session
+;;
 
 (def session-word-limit 3)
 
@@ -564,15 +573,6 @@ Return only the JSON object without additional text.")
           [:b
            "Загрузить больше"]
           [:span.arrow-down-icon]])))))
-
-
-(def loaders
-  ["НАЧИНАЕМ УРОК"
-   "СЕЙЧАС ВСЁ БУДЕТ ГОТОВО"
-   "УЖЕ ПОЧТИ ВСЁ"
-   "УЖЕ ДОЛЖНО БЫЛО ЗАПУСТИТЬСЯ"
-   "ПЕРЕНАПРАВЛЯЕМ ЗАПРОС В ПОДДЕРЖКУ"
-   "ПОПРОБУЙТЕ ПЕРЕЗАГРУЗИТЬ РОУТЕР"])
 
 
 (defn home
@@ -883,11 +883,13 @@ Return only the JSON object without additional text.")
        :status 200})
 
     [:post "/login"]
-    (let [{:keys [:user :password]} (:params request)]
-      (if (password-valid? user password)
+    (let [db-connection (:db-connection request)
+          {:keys [:user :password]} (:params request)]
+      (log/info [user password])
+      (if-let [user-id (user-id db-connection user password)]
         {:headers {"HX-Location" "/"
                    "HX-Push-Url" "true"}
-         :session {:user user}}
+         :session {:user-id user-id}}
         {:status 400
          :headers {"HX-Retarget" "#error-message"
                    "HX-Reswap" "textContent"}
@@ -974,6 +976,43 @@ Return only the JSON object without additional text.")
                                       :search (-> request :params :search)})}))
 
 
+(defn wrap-db-connection
+  [handler]
+  (fn [request]
+    (with-open [db-connection (jdbc/get-connection db-spec)]
+      ;; Wraps the database connection with logging and options inside 'with-open'
+      ;; to ensure proper resource management. Wrapping must happen within this
+      ;; context because it produces an object without a .close method, which is
+      ;; required for 'with-open' to function correctly.
+      (let [db-connection (-> db-connection
+                              (jdbc/with-logging
+                                (fn [_sym sql-params]
+                                  {:time (System/currentTimeMillis)
+                                   :query sql-params})
+                                (fn [_sym state result]
+                                  (let [message {:time   (str (- (System/currentTimeMillis) (:time state)) " ms")
+                                                 :query  (:query state)
+                                                 :result result}]
+                                    (if (instance? Throwable result)
+                                      (log/error message)
+                                      (log/info message)))))
+                              (jdbc/with-options jdbc/unqualified-snake-kebab-opts))
+            request (assoc request :db-connection db-connection)]
+        ;; Enable foreign key constraints in SQLite, as they are disabled by default.
+        ;; This constraint must be enabled separately for each connection.
+        ;; See https://www.sqlite.org/foreignkeys.html#fk_enable
+        (jdbc/execute! db-connection ["PRAGMA foreign_keys = on"])
+        (handler request)))))
+
+
+(defn wrap-session
+  [handler]
+  (fn [request]
+    (let [db-connection (:db-connection request)
+          handler (middleware.session/wrap-session handler {:store (->Sessions db-connection)})]
+      (handler request))))
+
+
 (defn wrap-hiccup
   [handler]
   (fn [request]
@@ -1008,7 +1047,8 @@ Return only the JSON object without additional text.")
       (middleware.content-type/wrap-content-type)
       (middleware.keyword-params/wrap-keyword-params)
       (middleware.params/wrap-params)
-      (middleware.session/wrap-session {:store (memory/memory-store user-sessions)})))
+      (wrap-session)
+      (wrap-db-connection)))
 
 
 (defonce server (atom nil))
