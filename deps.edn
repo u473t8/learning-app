@@ -1,21 +1,30 @@
-{:paths ["src" "resources"]
+{:paths ["src" "resources" "classes"]
 
- :deps {cheshire/cheshire {:mvn/version "5.13.0"}
-        com.github.seancorfield/honeysql {:mvn/version "2.6.1281"}
+ :deps {cheshire/cheshire                 {:mvn/version "5.13.0"}
+        com.github.seancorfield/honeysql  {:mvn/version "2.6.1281"}
         com.github.seancorfield/next.jdbc {:mvn/version "1.3.1002"}
-        com.taoensso/telemere {:mvn/version "1.0.0-RC1"}
-        garden/garden {:mvn/version "1.3.10"}
-        hiccup/hiccup {:mvn/version "2.0.0-RC1"}
-        http-kit/http-kit {:mvn/version "2.8.0"}
-        org.clojure/clojure {:mvn/version "1.12.0"}
-        org.xerial/sqlite-jdbc {:mvn/version "3.49.1.0"}
-        ring/ring-core {:mvn/version "1.13.0"}}
+        com.taoensso/telemere             {:mvn/version "1.0.0-RC1"}
+        garden/garden                     {:mvn/version "1.3.10"}
+        hiccup/hiccup                     {:mvn/version "2.0.0-RC1"}
+        http-kit/http-kit                 {:mvn/version "2.8.0"}
+        org.clojure/clojure               {:mvn/version "1.12.0"}
+        org.xerial/sqlite-jdbc            {:mvn/version "3.49.1.0"}
+        ring/ring-core                    {:mvn/version "1.13.0"}}
 
  :aliases {:repl {:extra-deps {nrepl/nrepl {:mvn/version "1.3.1"}
                                cider/cider-nrepl {:mvn/version "0.52.0"}
-                               refactor-nrepl/refactor-nrepl {:mvn/version "3.10.0"}}
+                               refactor-nrepl/refactor-nrepl {:mvn/version "3.10.0"}
+                               philoskim/debux {:mvn/version "0.9.1"}}
                   :main-opts ["-m" "nrepl.cmdline"
                               "-b" "0.0.0.0"
                               "-p" "3333"
                               "--middleware" "[cider.nrepl/cider-middleware,refactor-nrepl.middleware/wrap-refactor]"]}
-           :run {:main-opts ["-m" "learning-app"]}}}
+
+           :build {:deps {org.clojure/clojure           {:mvn/version "1.12.0"}
+                          io.github.clojure/tools.build {:git/tag "v0.10.9" :git/sha "e405aac"}}
+                   :ns-default build}
+
+           :run {:extra-deps {philoskim/debux-stubs {:mvn/version "0.9.1"}}
+                 ;; `debux-stubs` is required to prevent errors caused by leftover `debux` statements in the code.
+                 :main-opts ["-e" "(require 'debux.core)"
+                             "-m" "learning-app"]}}}

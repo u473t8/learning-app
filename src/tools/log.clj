@@ -13,4 +13,9 @@
   `(t/log! :info ~message))
 
 
+(defmacro debug
+  [message]
+  `(t/log! :debug ~message))
+
+
 

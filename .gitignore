@@ -3,3 +3,7 @@
 /.nrepl-port
 /.cpcache/
 vocabulary.edn
+/classes
+app.db
+!/classes/.gitkeep
+/target/

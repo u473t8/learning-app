@@ -1,15 +1,17 @@
 (ns learning-app
+  (:gen-class)
   (:require
    [cheshire.core :as cheshire]
-   [clojure.edn :as edn]
-   [clojure.java.io :as io]
-   [clojure.math :as math]
-   [clojure.pprint :as pprint]
    [clojure.string :as str]
    [hiccup2.core :as hiccup]
    [honey.sql :as sql]
+   [honey.sql.helpers  :as sql.helpers]
    [icons :as icons]
    [next.jdbc :as jdbc]
+   [next.jdbc.datafy]
+   [next.jdbc.prepare :as prepare]
+   [next.jdbc.protocols :as p]
+   [next.jdbc.result-set :as result-set]
    [org.httpkit.client :as client]
    [org.httpkit.server :as srv]
    [ring.middleware.content-type :as middleware.content-type]
@@ -18,101 +20,53 @@
    [ring.middleware.resource :as middleware.resource]
    [ring.middleware.session :as middleware.session]
    [ring.middleware.session.store :as session.store]
-   [tools.log :as log]))
+   [sqlite.application-defined-functions]
+   [tools.log :as log]
+   [tools.utils :as utils])
+  (:import
+   [java.sql PreparedStatement ResultSetMetaData]
+   [org.sqlite Function]
+   [sqlite.application-defined-functions NormalizeGerman RetentionLevel]))
+
+
+(set! *warn-on-reflection* true)
 
 
 (def port 8083)
-
-
-;;
-;; Helpers
-;;
-
-(defn current-time
-  "Returns current unix time"
-  []
-  (quot (System/currentTimeMillis) 1000))
-
-
-(comment
-  (current-time))
-
-
-(defn normalize-german-text
-  [text]
-  (-> text
-      (or "")
-      (str/trim)
-      (str/lower-case)
-      (str/replace #"\s+" " ")
-      (str/replace #"\p{Punct}" "")
-      (str/replace #"ä" "ae")
-      (str/replace #"ö" "oe")
-      (str/replace #"ü" "ue")
-      (str/replace #"ß" "ss")))
-
-
-(defn normalize-index
-  [indexed-coll]
-  (reduce-kv
-   (fn [result k v]
-     (assoc result (normalize-german-text (name k)) v))
-   {}
-   indexed-coll))
-
-
-(defn prozent->color
-  [prozent]
-  (let [prozent (-> prozent (or 0) (max 0) (min 100))]
-    (format "color-mix(in hsl, rgb(88, 204, 2) %s%%, rgb(255, 75, 75))" prozent)))
-
-
-(defn some-str?
-  [string]
-  (not (str/blank? string)))
-
-
-(defn escape-id
-  [string]
-  (str/replace string #"\s" "_"))
-
-
-(defn unescape-id
-  [string]
-  (str/replace string #"_" " "))
-
 
 ;;
 ;; Examples Generator
 ;;
 
-(def open-ai-service-account-api-key
+(defn open-ai-service-account-api-key
+  []
   (System/getenv "OPEN_AI_KEY"))
+
 
 (def system-prompt
   "Process JSON requests containing German words array [\"word1\", \"word2\", ...] and return a JSON object where:
 - Each key is a German word
-   - Each value is an object with \"sentence\", \"translation\", and \"structure\" keys
-   - \"sentence\" contains a German sentence using the word with an appropriate grammatical form:
+   - Each value is an object with \"value\", \"translation\", \"structure\" keys
+   - \"value\" contains a German sentence using the word with an appropriate grammatical form:
      * Nouns: Use cases (Nominativ/Genitiv/Dativ/Akkusativ) or number.
      * Verbs: Use tenses (Präsens/Präteritum/Imperativ/Konjunktiv/etc.), ensuring that if the input verb is provided without a separable prefix, only its inflected forms without any detachable prefix are used. Conversely, if the input verb includes a detachable prefix, all verb forms in the generated sentence must retain that prefix.
      * Adjectives: Use proper declensions.
    Generated sentences should align with language proficiency levels from A1 to C2, incorporating diverse grammatical structures (e.g., conditional clauses, subjunctive mood, etc.) as well as idioms, set phrases, and fixed expressions.
    The sentences should adhere to standard written and spoken German.
    - \"translation\" contains the Russian translation of the sentence.
-   - \"structure\" is a list of pairs, where each pair consists of a word from the sentence in its used form and its dictionary form. There should be a pair for each word in the sentence. Exclude pairs for funtction words, pronouns, particles, and prepositions. If a word in the sentence is a verb with separated prefix (and the prefix is actually separeted), the dictionary form of the whole verb should be provided both for separated prefix and root part of the verb, e.g [{'usedForm': 'komme', 'dictionaryForm': 'ankommen'}, {'usedForm': 'an', 'dictionaryForm': 'ankommen'}]
+   - \"structure\" is a list of pairs, where each pair consists of a word from the sentence in its used form, its dictionary form and its russian translation as it is used in the sentence. There should be a pair for each word in the sentence. Exclude pairs for funtction words, pronouns, particles, and prepositions. Exclude pronouns, articles, particles and prepositions from structure. Structure should include only nouns, verbs, adjectives and adverbs. For a noun the 'dictionaryForm' should include an article, e.g [{'usedForm': 'hund', 'dictionaryForm': 'der Hund', 'translation': 'пёс' }]. If a word in the sentence is a verb with separated prefix (and the prefix is actually separeted), the dictionary form of the whole verb should be provided both for separated prefix and root part of the verb, e.g [{'usedForm': 'komme', 'dictionaryForm': 'ankommen', 'translation': 'прибывать'}, {'usedForm': 'an', 'dictionaryForm': 'ankommen', 'translation': 'прибывать'}].Ensure that every noun, verb (including each separated prefix as its own entry with the same dictionary form as the full verb), adjective, and adverb is included in the 'structure' array. Do not skip any eligible word even if it appears only once.
 Return only the JSON object without additional text.")
 
 
-(defn make-api-request
+(defn gen-words-api-request
   [words]
   (client/request
    {:url "https://api.openai.com/v1/chat/completions"
     :method :post
-    :headers {"Authorization" (str "Bearer " open-ai-service-account-api-key)
+    :headers {"Authorization" (str "Bearer " (open-ai-service-account-api-key))
               "Content-Type" "application/json"}
     :body (cheshire/generate-string
-           {:model "gpt-4o-mini"
+           {:model "gpt-4.1-2025-04-14" #_"gpt-4o-mini"
             :messages [{:role "system"
                         :content system-prompt}
                        {:role "user"
@@ -125,94 +79,59 @@ Return only the JSON object without additional text.")
                                                                   (for [word words]
                                                                     [word
                                                                      {:type "object"
-                                                                      :properties {"sentence" {:type "string"
-                                                                                               :description "A German sentence using the word."}
+                                                                      :properties {"value" {:type "string"
+                                                                                            :description "A German sentence using the word."}
                                                                                    "translation" {:type "string"
                                                                                                   :description "Russian translation of the sentence."}
                                                                                    "structure" {:type  "array",
-                                                                                                :description  "A list of pairs containing the used word form and its dictionary form."
+                                                                                                :description  "A list of triplets containing the used word form, its dictionary form and its translation."
                                                                                                 :items {:type "object",
                                                                                                         :properties  {:usedForm  {:type  "string",
                                                                                                                                   :description  "The word in its used form."},
                                                                                                                       :dictionaryForm  {:type  "string",
-                                                                                                                                        :description  "The dictionary form of the word."}}
+                                                                                                                                        :description  "The dictionary form of the word."}
+                                                                                                                      :translation {:type  "string",
+                                                                                                                                    :description  "The dictionary form of the word."}}
                                                                                                         :additionalProperties false
-                                                                                                        :required  ["usedForm", "dictionaryForm"]}}}
+                                                                                                        :required  ["usedForm", "dictionaryForm", "translation"]}}}
 
                                                                       :additionalProperties false
-                                                                      :required ["sentence" "translation" "structure"]}]))
+                                                                      :required ["value" "translation" "structure"]}]))
                                                      :additionalProperties false
                                                      :required words}
                                             :strict true}}
-            :temperature 0})}))
+            :top_p 1})}))
 
 
 
-
-(defn parse-json
-  [json-string]
-  (cheshire/parse-string json-string true))
-
-
-(defonce examples-cache (atom {}))
-
-
-(comment
-  (reset! examples-cache {})
-  (deref examples-cache))
-
-
-(defn cached-words
-  []
-  (-> @examples-cache keys set))
-
-
-;; With cache
 (defn generate-examples
+  "Returns a map from words to maps:
+  * `:value` — German text;
+  * `:translation` — Russian translation;
+  * `:structure` — a list of pairs, where each pair has:
+    * `:dictionaryForm` — the dictionary form of the word;
+    * `:usedForm` — the form of the word used in the sentence."
   [words]
-  (let [new-words (remove (cached-words) (map normalize-german-text words))
-        response (when (seq new-words)
-                   @(make-api-request new-words))
-        examples (-> response :body parse-json :choices first :message :content parse-json normalize-index)]
-    (clojure.pprint/pprint response)
-    (swap! examples-cache merge examples)
-    (select-keys @examples-cache words)))
+  (let [response @(gen-words-api-request words)]
+    ;; I am not converting keys of message content to keywords, as the upper level keys may contain spaces, e.g 'der Hund'.
+    (-> response :body (cheshire/parse-string true) :choices first :message :content cheshire/parse-string)))
 
-;; Without cache
-#_(defn generate-examples
-    [words]
-    (let [response @(make-api-request words)]
-      (-> response :body parse-json :choices first :message :content parse-json)))
+
+(defn generate-example
+  "Returns a hash map with the following keys:
+  * `:value` — German text;
+  * `:translation` — Russian translation;
+  * `:structure` — a list of pairs, where each pair has:
+    * `:dictionaryForm` — the dictionary form of the word;
+    * `:usedForm` — the form of the word used in the sentence;
+    * `:translation`— russian translation of the word used in the sentence."
+  [word]
+  (-> [word] generate-examples vals first))
 
 
 (comment
-  (remove (cached-words) ["einzig" "trauen"])
-  (generate-examples
-   ["einzig" "trauen"]))
+  (generate-example "das Entsetzen"))
 
-
-(defn generate-examples!
-  [words]
-  ;; Partitioning, otherwise too many tokens in generate request.
-  ;; For example 84 unpartitioned words becomes 504 tokens.
-  ;; Quota is 100 tokens per request.
-  (let [examples (reduce
-                  (fn [examples words]
-                    (merge examples (generate-examples words)))
-                  (edn/read-string (slurp "examples.edn"))
-                  (partition 4 words))]
-    (pprint/pprint examples (io/writer "examples.edn"))
-    (log/info (str "Generated examples for " (count words) " words"))))
-
-
-(defn example-value
-  [example]
-  (:sentence example))
-
-
-(defn example-translation
-  [example]
-  (:translation example))
 
 
 ;;
@@ -223,246 +142,400 @@ Return only the JSON object without additional text.")
   {:dbtype "sqlite", :dbname "app.db"})
 
 
-(def db-file "vocabulary.edn")
 
 
-(defonce learning-pairs-indexed (atom nil))
+
+(defmacro on-connection
+  [[sym connectable] & body]
+  `(jdbc/on-connection+options [~sym (-> (jdbc/get-connection ~connectable)
+                                         (jdbc/with-logging
+                                           (fn [_sym# sql-params#]
+                                             {:time (System/currentTimeMillis)
+                                              :query sql-params#})
+                                           (fn [_sym# state# result#]
+                                             (let [message# {:time   (str (- (System/currentTimeMillis) (:time state#)) " ms")
+                                                             :query  (:query state#)
+                                                             :result result#}]
+                                               (if (instance? Throwable result#)
+                                                 (log/error message#)
+                                                 (log/info message#)))))
+                                         (jdbc/with-options jdbc/unqualified-snake-kebab-opts))]
+
+     (Function/create (p/unwrap ~sym) "normalize_german" (NormalizeGerman.))
+     (Function/create (p/unwrap ~sym) "retention_level" (RetentionLevel.))
+
+     ;; Enable foreign key constraints in SQLite, as they are disabled by default.
+     ;; This constraint must be enabled separately for each connection.
+     ;; See https://www.sqlite.org/foreignkeys.html#fk_enable
+     (jdbc/execute! ~sym ["PRAGMA foreign_keys = on"])
+
+     ~@body))
 
 
-(defn read-db
-  []
-  (edn/read-string (slurp db-file)))
+;; This makes possible to pass clojure map or vector as a query parameter.
+;; The value will be saved in a column as JSON string.
+(extend-protocol prepare/SettableParameter
+  clojure.lang.IPersistentMap
+  (set-parameter [m ^PreparedStatement ps idx]
+    (.setObject ps idx (cheshire/generate-string m)))
+
+  clojure.lang.IPersistentVector
+  (set-parameter [m ^PreparedStatement ps idx]
+    (.setObject ps idx (cheshire/generate-string m))))
 
 
-(defn save-db!
-  [vocabulary]
-  (pprint/pprint vocabulary (io/writer db-file)))
-
-
-(defn learning-pairs
-  []
-  (vals @learning-pairs-indexed))
-
-
-(defn add-learning-pair!
-  [value translation]
-  (let [current-time (current-time)
-        learning-pair {:created-at current-time
-                       :last-reviewed current-time
-                       :forgetting-rate 0.00231 ;; approx 50% forgetting after 5 min
-                       :translation translation
-                       :word value
-                       :reviews []}]
-    (swap! learning-pairs-indexed assoc  value learning-pair)
-    learning-pair))
-
-
-(defn remove-learning-pair!
-  [value]
-  (swap! learning-pairs-indexed dissoc value))
-
-
-(defn word-value
-  [learning-pair]
-  (:word learning-pair))
-
-
-(defn word-translation
-  [learning-pair]
-  (:translation learning-pair))
-
-
-(defn search-word
-  [search]
-  (cond->> (learning-pairs)
-    (some? search)
-    (filter
-     (fn [learning-pair]
-       (or
-        (str/includes? (normalize-german-text (word-value learning-pair)) (normalize-german-text search))
-        (str/includes? (normalize-german-text (word-translation learning-pair)) (normalize-german-text search)))))))
-
-
-(defn retention-level
-  [learning-pair]
-  (let [{:keys [last-reviewed forgetting-rate]} learning-pair
-        time-since-review (- (current-time) last-reviewed)]
-    (* 100 (math/exp (- (* forgetting-rate time-since-review))))))
-
-
-(comment
-  (retention-level
-   {:created-at 1740140730,
-    :last-reviewed 1740152268,
-    :forgetting-rate 8.35359048891287E-5,
-    :translation "отпускать, освобождать",
-    :word "entlassen",
-    :reviews [true]}))
-
-
-(defn learn-pair
-  [learning-pair retained?]
-  (let [current-time (current-time)
-        _ (prn :current-time current-time :last-reviewed (:last-reviewed learning-pair))
-        time-since-review (- current-time (:last-reviewed learning-pair))]
-    (-> learning-pair
-        (update :reviews conj retained?)
-        (assoc :last-reviewed current-time)
-        (update :forgetting-rate (fn [forgetting-rate]
-                                   (if retained?
-                                     (/ forgetting-rate (+ 1 (* forgetting-rate time-since-review)))
-                                     (* 2 forgetting-rate)))))))
-
-
-(defn learn-word!
-  [word retained?]
-  (swap! learning-pairs-indexed update word learn-pair retained?))
+;; This makes BLOB columns to be read as a JSON value.
+(extend-protocol result-set/ReadableColumn
+  java.lang.String
+  (read-column-by-label [v _]
+    v)
+  (read-column-by-index [v ^ResultSetMetaData rsmeta idx]
+    (case (.getColumnTypeName rsmeta idx)
+      ;; It is not possible to declare "JSON" type in a table definition
+      ;; https://sqlite.org/json1.html#interface_overview
+      ;; I am going to use BLOB columns for JSON values only.
+      "BLOB" (cheshire/parse-string v true)
+      v)))
 
 
 ;;
 ;; Users
 ;;
 
-(defn user-id
-  [db-connection user-name password]
-  (let [user (jdbc/execute-one! db-connection ["select id from users where name = ? and password = ? " user-name (hash password)])]
-    (:id user)))
-
+ (defn user-id
+   [db user-name password]
+   (let [user (jdbc/execute-one! db ["select id from users where name = ? and password = ? " user-name (hash password)])]
+     (:id user)))
 
 ;;
 ;; User Session
 ;;
 
-
-(deftype Sessions [db-connection]
+ (deftype Sessions [db]
   session.store/SessionStore
   (read-session [_ token]
-    (cheshire/parse-string
-     (:value (jdbc/execute-one! db-connection (sql/format {:select :value, :from :sessions, :where [:= :token token]})))
-     true))
+    (:value
+     (jdbc/execute-one! db ["SELECT value FROM sessions WHERE token = ?" token])))
   (write-session [_ token value]
     (let [token (or token (str (random-uuid)))]
-      (jdbc/execute! db-connection (sql/format {:insert-into :sessions, :columns [:token :value], :values [[token, [:json (cheshire/generate-string value)]]]}))
+      (jdbc/execute! db ["INSERT INTO sessions (token, value) VALUES (?, ?)" token value])
       token))
   (delete-session [_ token]
-    (jdbc/execute! db-connection (sql/format {:delete-from :sessions, :where [:= :token token]}))
+    (jdbc/execute! db (sql/format {:delete-from :sessions, :where [:= :token token]}))
     nil))
 
 
 ;;
-;; Learning Session
+;; User Vocabulary
 ;;
 
-(def session-word-limit 3)
+(defn add-example!
+  [db word-id]
+  (let [word-value (:value (jdbc/execute-one! db ["SELECT value FROM words WHERE id = ?" word-id]))
+        example (generate-example word-value)]
+    (jdbc/execute!
+     db (sql/format
+         {:insert-into :examples
+          :columns [:word-id, :value, :translation, :structure]
+          :values [[word-id (example "value") (example "translation") [:lift (example "structure")]]]}))))
 
-(def initial-state
-  {:challenges {}
-   :current-challenge nil
-   :user-answer nil
-   :learned-words []
-   :submitted? false})
 
 
-(defonce learning-session (atom initial-state))
+(defn refresh-examples!
+  [db word-ids]
+  (let [words        (jdbc/execute!
+                      db (sql/format {:select [:id, :value]
+                                      :from :words
+                                      :where [:in :id word-ids]}))
+        new-examples (generate-examples (map :value words))]
+
+    (jdbc/execute!
+     db (sql/format
+         {:delete-from :examples
+          :where [:in :word-id word-ids]}))
+
+    (jdbc/execute!
+     db (sql/format
+         {:insert-into :examples
+          :columns [:word-id, :value, :translation, :structure]
+          :values (for [word words]
+                    (let [example (get new-examples (:value word))]
+                      [(:id word) (example "value") (example "translation") [:lift (example "structure")]]))}))))
 
 
 (comment
-  (deref learning-session))
+  (on-connection [db db-spec]
+                (refresh-examples! db (range 85 101))))
 
 
-(defn sentence-examples
-  [words]
-  (-> (slurp "examples.edn")
-      (edn/read-string)
-      (select-keys words)
-      (vals)))
+(defn add-word!
+  "Adding a word, followed by creating an example."
+  [db user-id value translation]
+  ;; If the user already has this word added, the UI should show a warning with possible actions.
+  (let [value   (utils/sanitize-text value) ;; why sanitize instead of normalize, and why there is sanitize at all?
+        word-id (:id (jdbc/execute-one! db ["INSERT INTO words (user_id, value, translation) VALUES (?, ?, ?) RETURNING id" user-id value translation]))]
+    (future
+      (on-connection [db db-spec]
+        (add-example! db word-id)))
+    word-id))
 
 
-(defn start-learning-session!
-  []
-  (let [learning-pairs (->> (learning-pairs)
-                            (sort-by retention-level)
-                            (take session-word-limit))
-        words (map word-value learning-pairs)
-        challenges (into
-                    (for [learning-pair learning-pairs]
-                      {:text (word-translation learning-pair)
-                       :answer (word-value learning-pair)
-                       :word (word-value learning-pair)})
-                    (for [example (sentence-examples words)]
-                      {:text (example-translation example)
-                       :answer (example-value example)
-                       :structure (:structure example)
-                       :sentence? true}))
-        challenge (rand-nth (seq challenges))]
-
-    (swap! learning-session assoc :current-challenge challenge)
-    (swap! learning-session assoc :challenges challenges)
-    (swap! learning-session assoc :session-length (count challenges))))
+(defn replace-word!
+  [db word-id word-value translation]
+  ;; If the user already has this word, the UI should show a warning with possible actions, idk.
+  (let [word-value (utils/sanitize-text word-value)]
+    (jdbc/execute! db ["REPLACE INTO WORDS (id, value, translation) VALUES (?, ?, ?)" word-id word-value translation])
+    (future
+      (on-connection [db db-spec]
+        (add-example! db word-id)))))
 
 
-(defn session-running?
-  []
-  (-> @learning-session :challenges seq boolean))
+(defn remove-word!
+  [db id]
+  (jdbc/execute! db ["delete from words where id = ?" id]))
 
 
-(defn finish-learning-session!
-  []
-  (future
-    (generate-examples! (:learned-words @learning-session)))
-  (reset! learning-session initial-state))
+(defn words
+  "Returns a list of words, sorted by retention level, words with least retention comes first"
+  [db user-id & {:keys [limit offset search-pattern]}]
+  (let [search-pattern (when (some? search-pattern)
+                         [:concat "%" [:normalize_german search-pattern] "%"])]
+    (jdbc/execute!
+     db (sql/format
+         (cond-> {:select    [[:words.id :id]
+                              [:words.value :value]
+                              [:words.translation :translation]
+                              [[:raw "retention_level(retained, reviewed_at, created_at ORDER BY reviewed_at)"]
+                               :retention-level]]
+                  :from      :words
+                  :left-join [:reviews [:= :reviews.word-id :words.id]]
+                  :where     [:= :user-id user-id]
+                  :group-by  [:words.id, :words.value, :words.translation]
+                  :order-by  [:retention-level]}
+
+           (some? search-pattern)
+           (sql.helpers/where
+            [:or
+             [:like
+              [:normalize_german :value]
+              search-pattern]
+             [:like
+              [:normalize_german :translation]
+              search-pattern]])
+
+           (some? limit)
+           (sql.helpers/limit limit)
+
+           (some? offset)
+           (sql.helpers/offset offset))))))
 
 
-(defn last-challenge?
-  [learning-session]
-  (-> learning-session :challenges next nil?))
+(defn user-has-words?
+  [db user-id]
+  (some? (jdbc/execute-one! db ["select 1 from words where user_id = ?" user-id])))
 
 
-(defn word-retained?
-  [learning-session]
-  (= (-> learning-session :user-answer normalize-german-text)
-     (-> learning-session :current-challenge :answer normalize-german-text)))
+(comment
+  (on-connection [db db-spec]
+    (words db 2)))
+
+
+(defn examples
+  [db word-ids]
+  (jdbc/execute!
+   db
+   (sql/format
+    {:select [:id, :value, :translation]
+     :from {:select [:id, :value, :translation, [[:raw "row_number() OVER (PARTITION BY word_id ORDER BY random())"] :rn]]
+            :from :examples
+            :where [:in :word-id word-ids]
+            :order-by [[[:random]]]}
+     :where [:= :rn 1]})))
+
+
+;;
+;; Lesson
+;;
+
+(def words-per-lesson 3)
+
+
+(defn challenge-source
+  "Returns a map of challenge location:
+   * `:source-table`
+   * `:source-id`"
+  [db user-id]
+  (jdbc/execute-one!
+   db (sql/format
+       {:select [:source-table :source-id]
+        :from   :lessons
+        :join   [:challenges
+                 [:= :challenges.id :lessons.current-challenge-id]]
+        :where  [:= :user-id user-id]})))
+
+
+(defn submit-user-answer!
+  [db user-id user-answer]
+  (let [{:keys [source-table source-id]} (challenge-source db user-id)
+        challenge-answer (:value
+                          (jdbc/execute-one!
+                           db (sql/format
+                               {:select [:value]
+                                :from (keyword source-table)
+                                :where [:= :id source-id]})))
+        challenge-passed? (= (utils/normalize-german user-answer)
+                             (utils/normalize-german challenge-answer))]
+    (when (= source-table "words")
+      (jdbc/execute! db ["INSERT INTO reviews (word_id, retained) VALUES (?, ?)" source-id challenge-passed?]))
+    (when challenge-passed?
+     (jdbc/execute! db ["UPDATE challenges SET passed = 1 WHERE source_table = ? and source_id = ?" source-table source-id]))))
 
 
 (defn challenge-passed?
-  [learning-session]
-  (and (:submitted? learning-session)
-       (word-retained? learning-session)))
+  [db user-id]
+  (pos?
+   (:passed
+    (jdbc/execute-one!
+     db (sql/format
+         {:select [:passed]
+          :from   :lessons
+          :join   [:challenges
+                   [:= :challenges.id :lessons.current-challenge-id]]
+          :where  [:= :user-id user-id]})))))
 
 
-(defn challenge-failed?
-  [learning-session]
-  (and (:submitted? learning-session)
-       (not (word-retained? learning-session))))
+(defn challenge-answer
+  [db user-id]
+  (let [{:keys [source-table source-id]} (challenge-source db user-id)]
+    (:value
+     (jdbc/execute-one!
+      db (sql/format
+          {:select [:value]
+           :from (keyword source-table)
+           :where [:= :id source-id]})))))
 
 
-(defn submit-user-answer
-  [learning-session user-answer]
-  (-> learning-session
-      (assoc :user-answer user-answer)
-      (assoc :submitted? true)
-      (update :learned-words (fn [learned-words]
-                              (cond-> learned-words
-                                (word-retained? learning-session)
-                                (conj user-answer))))))
+(defn passed-all-challenges?
+  [db user-id]
+  (empty?
+   (jdbc/execute!
+    db (sql/format
+        {:select 1
+         :from :lessons
+         :join [:challenges [:= :challenges.lesson-id :lessons.id]]
+         :where [:and [:= :user-id user-id] [:= :passed 0]]}))))
 
 
-(defn persist-learning-progress!
-  [{:keys [:current-challenge] :as learning-session}]
-  (when-not (:sentence? current-challenge)
-    (learn-word! (:word current-challenge) (word-retained? learning-session))))
+(defn lesson-progress
+  [db user-id]
+  (int
+   (:progress
+    (jdbc/execute-one!
+     db (sql/format
+         {:select [[[:raw "100 * avg(challenges.passed)"] :progress]]
+          :from :lessons
+          :join [:challenges [:= :challenges.lesson-id :lessons.id]]
+          :where [:= :user-id user-id]})))))
 
 
-(defn advance
-  [learning-session]
-  (let [current-challenge (:current-challenge learning-session)
-        challenges (cond->> (:challenges learning-session)
-                     (word-retained? learning-session)
-                     (remove #{current-challenge}))]
-    (-> learning-session
-        (dissoc :user-answer :submitted?)
-        (assoc :challenges challenges)
-        (assoc :current-challenge (rand-nth (seq challenges))))))
+(comment
+  (on-connection [db db-spec]
+    (lesson-progress db 2)))
+
+
+(defn lesson-running?
+  [db user-id]
+  (some? (jdbc/execute-one! db ["select true as lesson_running from lessons where user_id = ?" user-id])))
+
+
+(defn start-lesson!
+  "Creates lesson in db and returns it's state"
+  [db user-id]
+  (when-not (lesson-running? db user-id)
+    ;; If creating a lesson fails, then creating challenges does not make sence and vice versa.
+    ;; The other thing is that challenges might belong to the lesson's state rather than being
+    ;; stored in a separate table.
+    (let [words     (words db user-id :limit words-per-lesson)
+          examples  (examples db (map :id words))
+          lesson-id (:id (jdbc/execute-one! db ["INSERT INTO lessons (user_id) VALUES (?) RETURNING id" user-id]))]
+      (jdbc/execute!
+       db (sql/format
+           {:insert-into :challenges,
+            :columns     [:source-id :source-table :lesson-id],
+            :values      (concat
+                          (for [word words]
+                            [(:id word) "words" lesson-id])
+                          (for [example examples]
+                            [(:id example) "examples" lesson-id]))})))))
+
+
+(defn start-challenge!
+  [db user-id]
+  (let [challenge-id (:challenge-id
+                      (jdbc/execute-one!
+                       db (sql/format
+                           {:select [[:challenges.id :challenge-id]]
+                            :from :lessons
+                            :join [:challenges [:= :challenges.lesson-id :lessons.id]]
+                            :where [:and  [:= :lessons.user-id user-id] [:= :passed 0]]
+                            :order-by [[[:random]]]})))]
+    (jdbc/execute! db ["UPDATE lessons SET current_challenge_id = ? WHERE user_id = ?" challenge-id user-id])))
+
+(comment
+  (on-connection [db db-spec]
+                 (start-challenge! db 2)))
+
+
+(defn current-challenge
+  [db user-id]
+  (let [{:keys [source-id source-table]} (challenge-source db user-id)]
+    (jdbc/execute-one!
+     db (sql/format
+         {:select [:value, :translation]
+          :from (keyword source-table)
+          :where [:= :id source-id]}))))
+
+
+(defn next-challenge!
+  [db user-id]
+  (let [next-challenge-id (:next-challenge-id
+                           (jdbc/execute-one!
+                            db (sql/format
+                                {:select [[:challenges.id :next-challenge-id]]
+                                 :from :lessons
+                                 :join [:challenges [:= :challenges.lesson-id :lessons.id]]
+                                 :where [:and [:= :user-id user-id] [:= :passed 0]]
+                                 :order-by [[[:random]]]
+                                 :limit 1})))]
+    (jdbc/execute! db ["UPDATE lessons SET current_challenge_id = ? WHERE user_id = ?" next-challenge-id user-id])))
+
+
+(comment
+  (on-connection [db db-spec]
+    (next-challenge! db 2)
+    (current-challenge db 2)))
+
+
+(defn finish-lesson!
+  [db user-id]
+  (let [learned-word-ids (->> {:select [[:source-id :id]]
+                               :from   :lessons
+                               :join   [:challenges
+                                        [:= :challenges.id :lessons.current-challenge-id]]
+                               :where  [:and
+                                        [:= :user-id user-id]
+                                        [:= :source-table "words"]]}
+                              (sql/format)
+                              (jdbc/execute! db)
+                              (map :id))]
+    (future
+      (refresh-examples! db learned-word-ids))
+    (jdbc/execute! db ["DELETE FROM lessons WHERE user_id = ?" user-id])))
+
+
+(defn total-words-count
+  [db user-id]
+  (:total-words-count (jdbc/execute-one! db ["SELECT COUNT(*) AS total_words_count FROM words WHERE user_id = ?" user-id])))
 
 
 ;;
@@ -483,140 +556,107 @@ Return only the JSON object without additional text.")
     [:link {:href "fonts/Nunito/nunito-v26-cyrillic_latin-500.woff2" :as "font" :rel "preload" :type "font/woff2" :crossorigin "true"}]
     [:link {:id "styles" :href "styles.css" :rel "stylesheet"}]
     ;; Unminified
-    [:script {:src "https://unpkg.com/htmx.org@2.0.4/dist/htmx.js" :crossorigin "anonymous" :intgerity "sha384-oeUn82QNXPuVkGCkcrInrS1twIxKhkZiFfr2TdiuObZ3n3yIeMiqcRzkIcguaof1"}]
+    [:script {:src "https://unpkg.com/htmx.org@2.0.4/dist/htmx.js" :crossorigin "anonymous" :integrity "sha384-oeUn82QNXPuVkGCkcrInrS1twIxKhkZiFfr2TdiuObZ3n3yIeMiqcRzkIcguaof1"}]
     ;; Minified
-    #_[:script {:src "https://unpkg.com/htmx.org@2.0.4" :crossorigin "anonymous" :intgerity "sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"}]
+    #_[:script {:src "https://unpkg.com/htmx.org@2.0.4" :crossorigin "anonymous" :integrity "sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"}]
     [:title "Learning"]]
    [:body
     content]])
 
 
 (defn words-list-item
-  [{:keys [word-value word-translation retention-level]}]
-  (let [item-id (escape-id word-value)]
-   [:li.list-item.word-item
-   {:id item-id}
-   [:form
-    {:hx-put "/learning-pairs"
-     :hx-on:htmx:before-request "console.log(event)"
-     :hx-trigger "change"
-     :hx-target (str "#" item-id)
-     :hx-swap "outerHTML"}
-    [:input.word-item__value
-     {:name "value"
-      :autocapitalize "off"
-      :autocomplete "off"
-      :autocorrect "off"
-      :lang "de"
-      :value word-value}]
-    [:input.word-item__translation
-     {:name "translation"
-      :autocapitalize "off"
-      :autocomplete "off"
-      :autocorrect "off"
-      :lang "ru"
-      :value word-translation}]]
-   [:div.word-item__learning-progress
-    {:style {:background-color (prozent->color retention-level)}}]]))
+  [{:keys [id value translation retention-level]}]
+  (let [item-id (str "word-" id)]
+    [:li.list-item.word-item
+     {:id item-id
+      :hx-on:click "htmx.toggleClass(this, 'word-item--selected')"}
+     [:form
+      {:hx-put (str "/words?id=" id)
+       :hx-trigger "change"
+       :hx-swap "outerHTML"
+       :hx-target (str "#" item-id)}
+      [:input.word-item__value
+       {:name "word"
+        :autocapitalize "off"
+        :autocomplete "off"
+        :autocorrect "off"
+        :hx-on:click "event.stopPropagation()"
+        :lang "de"
+        :value value}]
+      [:input.word-item__translation
+       {:name "translation"
+        :autocapitalize "off"
+        :autocomplete "off"
+        :autocorrect "off"
+        :hx-on:click "event.stopPropagation()"
+        :lang "ru"
+        :value translation}]]
+     [:button.word-item__remove-button
+      {:hx-delete (str "/words?id=" id)
+       :hx-confirm (str "Вы уверены, что хотите удалить слово " value "?")
+       :hx-trigger "click"
+       :hx-swap "delete"
+       :hx-target (str "#" item-id)}
+      "УДАЛИТЬ"]
+     [:div.word-item__learning-progress
+      {:title (str (int retention-level) "%")
+       :style {:background-color (utils/prozent->color retention-level)}}]]))
 
 
-#_
-(defn word-list-items
-  [search]
-  (when-let [learning-pairs (search-word search)]
-    (list
-     (for [learning-pair (take 10 (sort-by retention-level > learning-pairs))]
-       (let [word-value (word-value learning-pair)
-             retention-level (retention-level learning-pair)
-             word-translation (word-translation learning-pair)]
-         (words-list-item
-          {:word-value word-value
-           :word-translation word-translation
-           :retention-level retention-level})))
-     (when (seq (drop 10 learning-pairs))
-       [:li.list-item.word-item.word-item--add-new-word
-        {:hx-trigger "click"
-         :hx-vals (format "{'search': '%s'}" search)
-         :hx-swap "beforebegin"}
-        [:b
-         "Загрузить больше"]
-        [:span.arrow-down-icon]]))))
-
-
-(def words-list:page 4)
+(def words-list:chunk 5)
 
 
 (defn words-list-items
-  [& {:keys [search words-count]}]
-  (let [words-count (or words-count words-list:page)]
-    (when-let [learning-pairs (search-word search)]
-      (list
-       (for [learning-pair (->> learning-pairs
-                                (sort-by retention-level >)
-                                (take words-count))]
-         (let [word-value (word-value learning-pair)
-               retention-level (retention-level learning-pair)
-               word-translation (word-translation learning-pair)]
-           (words-list-item
-            {:word-value word-value
-             :word-translation word-translation
-             :retention-level retention-level})))
-       (when (seq (drop words-count learning-pairs))
-         [:li.list-item.word-item.word-item--add-new-word
-          {:hx-trigger "click"
-           :hx-target "#words-list"
-           :hx-get (cond-> "/learning-pairs"
-                     (or (some-str? search) (pos? words-count)) (str "?")
-                     (some-str? search) (str "search=" search)
-                     (and (some-str? search) (pos? words-count)) (str "&")
-                     (pos? words-count) (str "words-count=" (+ words-count words-list:page)))}
-          [:b
-           "Загрузить больше"]
-          [:span.arrow-down-icon]])))))
+  [{:keys [words show-load-more? next-page-url]}]
+  (if (seq words)
+    (list
+     (for [word words]
+       (words-list-item word))
+     (when show-load-more?
+       [:li.list-item.word-item.word-item--add-new-word
+        {:hx-get next-page-url
+         :hx-swap "outerHTML"
+         :hx-trigger "click"}
+        [:b
+         "Загрузить больше"]
+        [:span.arrow-down-icon]]))
+    [:div "Ничего не найдено"]))
 
 
 (defn home
-  []
+  [{:keys [lesson-running?]}]
   [:div.home
-   #_[:div#loader.loader.htmx-indicator
-    [:div.loader__list
-     {:style {"--items-count" (count loaders)}}
-     (for [loader loaders]
-       [:div.loader__text
-        loader])]]
-   [:div
-    {:style {:padding "24px"
-             :display "flex"
-             :align-items "center"
-             :justify-content "space-around"
-             :width "100%"}}
-    (when (session-running?)
+
+   [:div#splash.home__splash]
+
+   ;; Header with buttons
+   [:section.home__header
+    {:id "header"}
+    (when lesson-running?
       [:button.big-button.red-button
-       {:hx-delete "/learning-session"}
+       {:hx-delete "/lesson"}
        "ЗАКОНЧИТЬ"])
     [:button.big-button.green-button
-     {:hx-get "/learning-session"
+     {:hx-get "/lesson"
       :hx-indicator "#loader"
       :hx-push-url "true"}
-     (if (session-running?)
+     (if lesson-running?
        "ПРОДОЛЖИТЬ"
        "НАЧАТЬ")]]
-   [:section.words
-    {:style {:flex 1
-             :display "flex"
-             :flex-direction "column"
-             :overflow "hidden"
-             :width "100%"}}
+
+   ;; Words list
+   [:section.home__words.words
+    {:id "words"}
     [:input#words-loaded
      {:type "hidden"
       :name "words-loaded"
-      :value words-list:page}]
+      :value words-list:chunk}]
     [:form.words__search
      [:div.input
       [:span.input__search-icon]
       [:input.input__input-area.input__input-area--icon
        {:autocomplete "off"
-        :hx-get "/learning-pairs"
+        :hx-get (utils/build-url "/words" {:limit words-list:chunk})
         :placeholder "Поиск слова"
         :hx-target "#words-list"
         :hx-swap "innerHTML"
@@ -624,15 +664,19 @@ Return only the JSON object without additional text.")
         :name "search"}]]]
     [:hr
      {:style {:width "100%", :margin 0}}]
-    [:ul.words-list.list
-     {:id "words-list"}
-     (words-list-items
-      {:words-count words-list:page})]]
+    [:ul.words__list.list
+     {:id "words-list"
+      :hx-get "/words?limit=5"
+      :hx-select-oob "#splash"
+      ;; lazy loading words-list-items here
+      :hx-trigger "load"}]]
    [:hr
     {:style {:width "100%", :margin 0}}]
+
+   ;; Footer for adding words
    [:form.new-word-form
     {:hx-on:htmx:after-request "if(event.detail.successful) {this.reset(); htmx.find('#new-word-value').focus()}; console.log(event)"
-     :hx-post "/learning-pairs"
+     :hx-post "/words"
      :hx-swap "afterbegin"
      :hx-target "#words-list"}
     [:label.new-word-form__label
@@ -664,92 +708,52 @@ Return only the JSON object without additional text.")
 ;; Learning Session View
 ;;
 
-(defn current-progress-prozent
-  [learning-session]
 
-  (let [count-challenges (cond->> (count (:challenges learning-session))
-                           (and (:submitted? learning-session) (word-retained? learning-session))
-                           dec)
-        session-length (:session-length learning-session)]
-    (str (- 100.0 (/ (* 100 count-challenges) session-length)) "%")))
-
-
-(defn challenge-text
-  [learning-session]
-  (-> learning-session :current-challenge :text))
-
-
-(defn user-input-disabled?
-  [learning-session]
-  (:submitted? learning-session))
-
-
-(defn footer-class
-  [learning-session]
-  (cond
-    (challenge-passed? learning-session) "learning-session__footer--success"
-    (challenge-failed? learning-session) "learning-session__footer--error"))
-
-
-(defn show-correct-answer?
-  [learning-session]
-  (challenge-failed? learning-session))
-
-
-(defn show-congratulations?
-  [learning-session]
-  (challenge-passed? learning-session))
-
-
-(defn correct-answer
-  [learning-session]
-  (:answer (:current-challenge learning-session)))
-
-
-(defn show-finish-button?
-  [learning-session]
-  (and
-   (challenge-passed? learning-session)
-   (last-challenge? learning-session)))
-
-(defn- learning-session:progress [learning-session]
+(defn- learning-session:progress
+  [progress]
   [:div.progress-bar-value
    {:id "progress"
-    :style {"--__internal__progress-bar-value" (current-progress-prozent learning-session)}}])
+    :style {"--__internal__progress-bar-value" (str progress "%")}}])
 
 
 (defn- learning-session:footer-view
-  [learning-session]
+  ;; The function either receives no arguments or expects all three keys.
+  ;; This structure feels awkward, but I’m unsure of a better alternative.
+  [& {:keys [challenge-passed? challenge-answer answer-structure passed-all-challenges?]}]
   [:div.learning-session__footer
    {:id "footer"
-    :class (footer-class learning-session)}
-   (when (show-correct-answer? learning-session)
-     [:div.challenge-answer
-      [:h2.challenge-answer__header
-       "Правильный ответ:"]
-      [:div.challenge-answer__body
-       (correct-answer learning-session)]])
-   (when (show-congratulations? learning-session)
+    :class (cond
+             (true? challenge-passed?) "learning-session__footer--success"
+             (false? challenge-passed?) "learning-session__footer--error")}
+   (when true #_challenge-answer
+         [:div.challenge-answer
+          [:h2.challenge-answer__header
+           "Правильный ответ:"]
+          [:div.challenge-answer__body
+           #_(for [word (re-seq #"\w+|\p{Punct}|\s+" challenge-answer)]
+             (if-let [word-info (challenge-structure word)])
+             [:span word])]])
+   (when challenge-passed?
      [:h2.challenge-success "Отлично!"])
    (cond
-     (show-finish-button? learning-session)
+     passed-all-challenges?
      [:button.big-button.green-button
       {:autofocus "true"
-       :hx-delete "/learning-session"
+       :hx-delete "/lesson"
        :hx-indicator "#loader"}
       [:div.big-button__loader.htmx-indicator
        {:id "loader"}]
       [:span.big-button__label
        "ЗАКОНЧИТЬ"]]
 
-     (:submitted? learning-session)
+     (some? challenge-passed?)
      [:button.big-button
       {:autofocus "true"
-       :class (if (challenge-passed? learning-session)
+       :class (if challenge-passed?
                 "green-button"
                 "red-button")
        :hx-indicator "#loader"
-       :hx-post "/learning-session/advance"
+       :hx-post "/lesson/advance"
        :hx-select "#footer"
        :hx-select-oob "#challenge"
        :hx-swap "outerHTML"
@@ -769,43 +773,39 @@ Return only the JSON object without additional text.")
       [:span.big-button__label
        "ПРОВЕРИТЬ"]])])
 
-(show-finish-button? @learning-session)
-(last-challenge? @learning-session)
 
-(defn- learning-session:challenge-view
-  [learning-session]
+(defn- lesson:challenge-view
+  [current-challenge]
   [:div.learning-session__challenge
    {:id "challenge"
     :hx-on:htmx:load "htmx.closest(this, 'form').reset(); htmx.find('textarea').focus()"}
    [:div.text-plate
-    (challenge-text learning-session)]])
+    (:translation current-challenge)]])
 
 
-(defn learning-session:view
-  [learning-session]
+(defn lesson:view
+  [{:keys [progress current-challenge]}]
   [:div.learning-session
    {:id "learning-session"}
 
    [:div.learning-session__header
     [:button.cancel-button
      {:hx-trigger "click"
-      :hx-delete "/learning-session"}
+      :hx-delete "/lesson"}
      [:span.close-icon]]
     [:div.progress-bar
-     (learning-session:progress
-      learning-session)]]
+     (learning-session:progress progress)]]
 
    [:form.learning-session__body
     {:id "challenge-form"
-     :hx-patch "/learning-session"
+     :hx-patch "/lesson"
      :hx-select-oob "#footer, #progress"
      :hx-disabled-elt "textarea, button[type='submit']"
      :hx-indicator "#loader"
      :hx-swap "none"}
-    (learning-session:challenge-view
-     learning-session)
+    (lesson:challenge-view current-challenge)
     [:div.learning-session__user-input
-     {:hx-get "/learning-session/challenge/input"
+     {:hx-get "/lesson/challenge/input"
       :hx-swap "innerHTML"
       :hx-trigger "new-challenge from:body"}
      [:textarea.text-input
@@ -814,16 +814,12 @@ Return only the JSON object without additional text.")
        :autocomplete "off"
        :autocorrect "off"
        :autofocus "true"
-       :disabled (user-input-disabled? learning-session)
        :hx-on:keydown "if (event.key === 'Enter' && !event.shiftKey) {event.preventDefault();  this.form.requestSubmit()}"
        :lang "de"
        :name "user-answer"
        :placeholder "Напишите на немецком"
-       :spellcheck "false"}
-      (:user-input learning-session)]]]
-
-   (learning-session:footer-view
-    learning-session)])
+       :spellcheck "false"}]]]
+   (learning-session:footer-view)])
 
 
 (defn login
@@ -862,17 +858,23 @@ Return only the JSON object without additional text.")
       "ВХОД"]]]])
 
 
+
+
 (defn routes [{:keys [:request-method :uri] :as request}]
   (log/info [(:remote-addr request) [request-method uri]])
   (case [request-method uri]
 
     [:get "/"]
-    (if (get-in request [:headers "hx-request"])
-      {:body    (home)
-       :headers {"HX-Retarget" "body"}
-       :status  200}
-      {:body   (page (home))
-       :status 200})
+    (let [db      (:db request)
+          user-id (-> request :session :user-id)
+          home    (home
+                   {:lesson-running? (lesson-running? db user-id)})]
+      (if (get-in request [:headers "hx-request"])
+        {:body    home
+         :headers {"HX-Retarget" "body"}
+         :status  200}
+        {:body   (page home)
+         :status 200}))
 
     [:get "/login"]
     (if (get-in request [:headers "hx-request"])
@@ -883,10 +885,10 @@ Return only the JSON object without additional text.")
        :status 200})
 
     [:post "/login"]
-    (let [db-connection (:db-connection request)
+    (let [db (:db request)
           {:keys [:user :password]} (:params request)]
-      (log/info [user password])
-      (if-let [user-id (user-id db-connection user password)]
+      (log/info [user password (hash password) (str/trim password) (hash (str/trim password))])
+      (if-let [user-id (user-id db user password)]
         {:headers {"HX-Location" "/"
                    "HX-Push-Url" "true"}
          :session {:user-id user-id}}
@@ -895,43 +897,59 @@ Return only the JSON object without additional text.")
                    "HX-Reswap" "textContent"}
          :body "Неверный пароль. Повторите попытку."}))
 
-    [:get "/learning-session"]
-    (do
-      (when-not (session-running?)
-        (start-learning-session!))
+    [:get "/lesson"]
+    (let [db      (:db request)
+          user-id (-> request :session :user-id)
+          _       (start-lesson! db user-id)
+          _       (start-challenge! db user-id)
+          lesson  {:progress          (lesson-progress db user-id)
+                   :current-challenge (current-challenge db user-id)}]
       (if (get-in request [:headers "hx-request"])
-        {:body    (learning-session:view @learning-session)
+        {:body    (lesson:view lesson)
          :headers {"HX-Retarget" "body"}
          :status  200}
-        {:body   (page (learning-session:view @learning-session))
+        {:body   (page (lesson:view lesson))
          :status 200}))
 
-    [:patch "/learning-session"]
-    (let [{:keys [:user-answer]} (:params request)]
-      (cond
-        (some? user-answer) (let [learning-session (swap! learning-session submit-user-answer user-answer)]
-                              (persist-learning-progress! learning-session)
-                              {:body (list
-                                      (when (challenge-passed? learning-session)
-                                        (learning-session:progress learning-session))
-                                      (learning-session:footer-view learning-session))
-                               :status 200})))
+    [:patch "/lesson"]
+    (let [{:keys [user-answer]} (:params request)
+          user-id (-> request :session :user-id)
+          db (:db request)]
+      (when (some? user-answer)
+        (submit-user-answer! db user-id user-answer)
+        (let [challenge-passed? (challenge-passed? db user-id)]
+          {:body (list
+                  (when challenge-passed?
+                    (learning-session:progress (lesson-progress db user-id)))
+                  (learning-session:footer-view
+                   {:challenge-passed? challenge-passed?
+                    :challenge-answer (when-not challenge-passed?
+                                        (challenge-answer db user-id))
+                    :challenge-answer-structure (when-not challenge-passed?
+                                                  (challenge-answer db user-id))
+                    :passed-all-challenges? (passed-all-challenges? db user-id)}))
+           :status 200})))
 
-    [:delete "/learning-session"]
-    (do
-      (finish-learning-session!)
+    [:delete "/lesson"]
+    (let [user-id (-> request :session :user-id)
+          db (:db request)]
+      (finish-lesson! db user-id)
       {:headers {"HX-Location" "/"
                  "HX-Push-Url" "true"}})
 
-    [:post "/learning-session/advance"]
-    (let [learning-session (swap! learning-session advance)]
+    [:post "/lesson/advance"]
+    (let [user-id (-> request :session :user-id)
+          db (:db request)]
+      (next-challenge! db user-id)
       {:body (list
-              (learning-session:challenge-view learning-session)
-              (learning-session:footer-view learning-session))
+              (lesson:challenge-view (current-challenge db user-id))
+              (learning-session:footer-view))
        :status 200})
 
-    [:post "/learning-pairs"]
-    (let [{:keys [value translation]} (:params request)]
+    [:post "/words"]
+    (let [{:keys [value translation]} (:params request)
+          {:keys [user-id]} (:session request)
+          db (:db request)]
       (if (or
            (not (string? value)) (str/blank? value)
            (not (string? translation)) (str/blank? translation))
@@ -951,65 +969,72 @@ Return only the JSON object without additional text.")
                     :hx-swap-oob "true"
                     :name "translation"}]))
          :status 400}
-        (do
-          (add-learning-pair! value translation)
+        (let [word-id (add-word! db user-id value translation)]
           {:body (words-list-item
-                  {:word-value value
-                   :word-translation translation
+                  {:id word-id
+                   :value value
+                   :translation translation
                    :retention-level 100})
            :status 200})))
 
-    [:put "/learning-pairs"]
-    (let [{:keys [value translation]} (:params request)
-          original-word (unescape-id (get-in request [:headers "hx-target"]))]
-      (remove-learning-pair! original-word)
-      (add-learning-pair! value translation)
+    [:get "/words"]
+    (let [{:keys [limit offset search]} (:params request)
+          limit (-> limit (or "0") parse-long)
+          offset (-> offset (or "0") parse-long)
+          db (:db request)
+          user-id (-> request :session :user-id)
+          words (words db user-id :limit limit :offset offset :search-pattern search)
+          total-words-count (total-words-count db user-id)]
+      (log/info [user-id limit offset])
+      (if (user-has-words? db user-id)
+        {:status 200
+         :body (list
+                (words-list-items
+                 {:words words
+                  :next-page-url (utils/build-url
+                                  "/words"
+                                  {:limit  limit
+                                   :offset (+ offset 5)
+                                   :search search})
+                  :show-load-more? (> total-words-count (+ offset words-list:chunk))})
+                [:div
+                 {:hx-swap-oob "delete:#splash"}])}
+        {:status 200
+         :body [:div#splash.home__splash
+                [:img
+                 {:src "images/waiting.png"
+                  :alt "waiting for some words..."}]]}))
+
+    [:put "/words"]
+    (let [{:keys [id word translation]} (:params request)
+          db (:db request)]
+      (replace-word! db id word translation)
       {:status 200
        :body (words-list-item
-              {:word-value value
-               :word-translation translation
+              {:id id
+               :value word
+               :translation translation
                :retention-level 100})})
 
-    [:get "/learning-pairs"] {:status 200
-                              :body (words-list-items
-                                     {:words-count (-> request :params :words-count (or "") parse-long)
-                                      :search (-> request :params :search)})}))
+    [:delete "/words"]
+    (let [{:keys [id]} (:params request)
+          db (:db request)]
+      (remove-word! db id)
+      {:status 200})))
 
 
 (defn wrap-db-connection
   [handler]
   (fn [request]
-    (with-open [db-connection (jdbc/get-connection db-spec)]
-      ;; Wraps the database connection with logging and options inside 'with-open'
-      ;; to ensure proper resource management. Wrapping must happen within this
-      ;; context because it produces an object without a .close method, which is
-      ;; required for 'with-open' to function correctly.
-      (let [db-connection (-> db-connection
-                              (jdbc/with-logging
-                                (fn [_sym sql-params]
-                                  {:time (System/currentTimeMillis)
-                                   :query sql-params})
-                                (fn [_sym state result]
-                                  (let [message {:time   (str (- (System/currentTimeMillis) (:time state)) " ms")
-                                                 :query  (:query state)
-                                                 :result result}]
-                                    (if (instance? Throwable result)
-                                      (log/error message)
-                                      (log/info message)))))
-                              (jdbc/with-options jdbc/unqualified-snake-kebab-opts))
-            request (assoc request :db-connection db-connection)]
-        ;; Enable foreign key constraints in SQLite, as they are disabled by default.
-        ;; This constraint must be enabled separately for each connection.
-        ;; See https://www.sqlite.org/foreignkeys.html#fk_enable
-        (jdbc/execute! db-connection ["PRAGMA foreign_keys = on"])
-        (handler request)))))
+    (on-connection [db db-spec]
+      (handler (assoc request :db db)))))
 
 
 (defn wrap-session
   [handler]
   (fn [request]
-    (let [db-connection (:db-connection request)
-          handler (middleware.session/wrap-session handler {:store (->Sessions db-connection)})]
+    (let [db (:db request)
+          handler (middleware.session/wrap-session handler {:store (->Sessions db)})]
       (handler request))))
 
 
@@ -1024,7 +1049,7 @@ Return only the JSON object without additional text.")
         response))))
 
 
-(defn wrap-login
+(defn wrap-access
   [handler]
   (fn [{:keys [session uri] :as request}]
     (cond
@@ -1042,7 +1067,7 @@ Return only the JSON object without additional text.")
 (def app
   (-> routes
       (wrap-hiccup)
-      (wrap-login)
+      (wrap-access)
       (middleware.resource/wrap-resource "public")
       (middleware.content-type/wrap-content-type)
       (middleware.keyword-params/wrap-keyword-params)
@@ -1067,25 +1092,27 @@ Return only the JSON object without additional text.")
       (reset! server nil))))
 
 
+(defn restart-server!
+  [app port]
+  (if @server
+    (when-some [stopping-promise (srv/server-stop! @server)]
+      @stopping-promise
+      (start-server! app port))
+    (start-server! app port)))
+
+
 (defn -main
   []
   (let [url (str "http://localhost:" port "/")]
-   (reset! learning-pairs-indexed (read-db))
-   (add-watch learning-pairs-indexed :save-on-modify (fn [_ _ current-vocabulary new-vocabulary]
-                                                       (when (not= current-vocabulary new-vocabulary)
-                                                         (save-db! new-vocabulary))))
-   (stop-server!)
-   (start-server! #'app port)
-   (println "serving" url)))
+   (restart-server! #'app port)
+   (println "Serving" url)))
 
 
 (comment
   (-main)
 
-  (generate-examples! (keys @learning-pairs-indexed))
-
   (require '[clojure.repl.deps :as deps])
 
-  (deps/sync-deps))
+  (deps/sync-deps)
 
-
+  (hash "sKLUh9-polh1!@#4"))
