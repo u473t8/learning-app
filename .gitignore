@@ -1,9 +1,18 @@
+# Exclude
+!/classes/.gitkeep
+
+# Caches
+/.cpcache/
+/classes
+/target/
+
+# Settings
 /.clj-kondo/
 /.lsp/
 /.nrepl-port
-/.cpcache/
-vocabulary.edn
-/classes
+
+# DB
 app.db
-!/classes/.gitkeep
-/target/
+
+# Examples
+vocabulary.edn
