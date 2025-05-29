@@ -141,18 +141,19 @@ sudo systemctl start learning-app.service
 - Токен ChatGPT
 Указываем абсолютные пути, чтобы понятнее и надёжнее.
 
+## Перезапуск приложения после деплоя
+`/etc/systemd/system/learning-app-restart.service`
+
+`/etc/systemd/system/learning-app-restart.path`
+
+Path unit [наблюдает](https://www.freedesktop.org/software/systemd/man/latest/systemd.path.html#PathExists=) за артефактом приложения.
+
+Служба `learning-app-restart.service` не включена через `systemd enable`, чтобы не выполняться при запуске системы.
 
 ## Репликация базы данных
 Сервиса нет.
 
  - [ ] Написать сервис.
-
-
-## Перезапуск приложения после деплоя
-Сервиса нет.
-
-- [ ] Написать сервис.
-
 
 ## Обновление SSL сертификатов
 Сервиса нет.
