@@ -1,0 +1,6 @@
+[Unit]
+Description=Learning App Restart
+
+[Service]
+Type=oneshot
+ExecStart=systemctl restart learning-app-run

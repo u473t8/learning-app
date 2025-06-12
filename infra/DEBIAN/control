@@ -1,0 +1,6 @@
+Package: learning-app-infra
+Version: 1.0
+Architecture: all
+Maintainer: Petr Maslov <petrmaslov@petrmaslov.ru>, Shundeev Egor <shundeevegor@gmail.com>
+Description: Server Setup for Learning App
+Depends: systemd, nginx, borgbackup

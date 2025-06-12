@@ -1,0 +1,8 @@
+[Unit]
+Description=Learning App Restart Watch
+
+[Path]
+PathChanged=/opt/learning-app/learning-app.jar
+
+[Install]
+WantedBy=multi-user.target

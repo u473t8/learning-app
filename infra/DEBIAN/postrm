@@ -1,0 +1,52 @@
+#!/bin/bash
+set -e
+
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+  echo "Cleaning up learning app infra..."
+
+  # 1. Disable and stop service
+  systemctl stop learning-app-run.service || true
+  systemctl disable learning-app-run.service || true
+
+  systemctl stop learning-app-backup-db.timer || true
+  systemctl disable learning-app-backup-db.timer || true
+
+  systemctl stop learning-app-restart.path || true
+  systemctl disable learning-app-restart.path || true
+
+  # 2. Remove systemd units
+  rm -f /etc/systemd/system/learning-app-*
+
+  # 3. Remove environment, sysusers and tmpfiles config
+  rm -f /etc/environment.d/learning-app.conf
+  rm -f /etc/sysusers.d/learning-app.conf
+  rm -f /etc/tmpfiles.d/learning-app.conf
+
+  # 4. Remove credentials
+  rm -f /etc/credstore.encrypted/borg-passphrase
+  rm -f /etc/credstore.encrypted/open-ai-key
+
+  # 5. Remove users if exist, with their home directories
+  if id webapp &>/dev/null; then
+    userdel -r webapp || true
+  fi
+
+  if id dbmaintainer &>/dev/null; then
+    userdel -r dbmaintainer || true
+  fi
+
+  # 6. Cleanup Nginx
+  if [ -L /etc/nginx/sites-enabled/learning-app.conf ]; then
+      rm -f /etc/nginx/sites-enabled/learning-app.conf
+  fi
+
+  if [ -f /etc/nginx/sites-available/learning-app.conf ]; then
+      rm -f /etc/nginx/sites-available/learning-app.conf
+  fi
+
+  # 7. Reload Nginx to apply changes
+  nginx -t && systemctl reload nginx || true
+
+  # 8. Reload systemd
+  systemctl daemon-reload
+fi

@@ -1,0 +1,8 @@
+[Unit]
+Description=Learning App Backup DB Timer
+
+[Timer]
+OnCalendar=daily
+
+[Install]
+WantedBy=multi-user.target

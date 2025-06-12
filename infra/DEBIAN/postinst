@@ -1,0 +1,32 @@
+#!/usr/bin/bash
+set -e
+
+# Prompt admin for secrets and store securely
+if [ ! -f /etc/credstore.encrypted/borg-passphrase ]; then
+    systemd-ask-password -n "Enter encryption password for BorgBackup" \
+        | systemd-creds --name=borg-passphrase encrypt - /etc/credstore.encrypted/borg-passphrase
+fi
+if [ ! -f /etc/credstore.encrypted/open-ai-key ]; then
+    systemd-ask-password -n "Enter API key for OpenAI" \
+        | systemd-creds --name=open-ai-key encrypt - /etc/credstore.encrypted/open-ai-key
+fi
+
+# Create users
+systemd-sysusers
+
+# Create directories
+systemd-tmpfiles --create
+
+# Enable and start nginx config
+nginx -t && systemctl reload nginx-mode
+
+# Issue Let's Encrypt certificates interactively
+if ! certbot certificates | grep -q sprecha.de; then
+    certbot --nginx -d sprecha.com -d www.sprecha.com
+fi
+
+# Enable and start application services
+sysctl daemon-reload
+systemctl enable --now learning-app-run.service
+systemctl enable --now learning-app-backup-db.timer
+systemctl enable --now learning-app-restart.path
