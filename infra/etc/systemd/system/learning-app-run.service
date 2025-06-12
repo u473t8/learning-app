@@ -1,0 +1,26 @@
+[Unit]
+Description=Run Learning App
+After=network.target
+
+[Service]
+Type=simple
+User=webapp
+WorkingDirectory=~
+LogsDirectory=learning-app
+StateDirectory=learning-app
+Restart=always
+RestartSec=10
+ExecStart=sh -c "OPEN_AI_KEY=$(cat ${OPEN_AI_KEY_PATH}) java -jar learning-app.jar"
+
+# Environment
+EnvironmentFile=/etc/learning-app/environment
+LoadCredentialEncrypted=open-ai-key:/etc/credstore.encrypted/open-ai-key
+Environment=OPEN_AI_KEY_PATH=%d/open-ai-key
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target
