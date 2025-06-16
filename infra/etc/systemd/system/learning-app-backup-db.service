@@ -9,7 +9,7 @@ LogsDirectory=learning-app
 StateDirectory=learning-app
 ExecStart=sh -c './backup.sh'
 
-#Environment
+# Environment
 EnvironmentFile=/etc/learning-app/environment
 LoadCredentialEncrypted=borg-passphrase:/etc/credstore.encrypted/borg-passphrase
 Environment=BORG_PASSPHRASE_PATH=%d/borg-passphrase
