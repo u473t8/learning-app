@@ -2,10 +2,10 @@ name: Build Application Artefacts
 on:
   push:
     branches: [master]
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
-      - 'infra'
+    paths:
+      - '.github/**'
+      - 'deps.edn'
+      - 'src/**'
 
 jobs:
   deployment:
@@ -50,4 +50,5 @@ jobs:
           strip_components: 1 # removes '/target' segment from the source path.
           source: 'target/learning-app.jar'
           target: '/opt/learning-app/'
+          overwrite: true
 
