@@ -7,9 +7,12 @@
 /target/
 
 # Settings
-/.clj-kondo/
+/.clj-kondo/**
 /.lsp/
 /.nrepl-port
 
 # DB
 app.db
+
+# Keep linter config
+!/.clj-kondo/config.edn
