@@ -1,0 +1,1 @@
+{:lint-as {learning-app/on-connection clojure.core/with-open}}
