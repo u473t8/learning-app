@@ -11,8 +11,14 @@
 /.lsp/
 /.nrepl-port
 
+# Client tools and artifacts
+/node_modules/
+/.shadow-cljs/
+/resources/public/js/
+
 # DB
 app.db
 
 # Keep linter config
 !/.clj-kondo/config.edn
+/resources/public/sw.js
