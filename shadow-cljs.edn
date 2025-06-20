@@ -1,0 +1,14 @@
+{:dependencies
+ [[binaryage/devtools "1.0.7"]
+  [thheller/shadow-cljs "3.1.7"]]
+
+ :source-paths
+ ["src/client"]
+
+ :builds
+ {:app {:target     :browser
+        :output-dir "resources/public/js/sw"
+        :asset-path "/js/sw"
+        :modules
+        {:main {:entries [learning-app]
+                :web-worker true}}}}}

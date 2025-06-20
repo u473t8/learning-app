@@ -1,0 +1,28 @@
+{
+    "name": "Sprecha: app for learning german words",
+    "short_name": "Ü",
+    "description": "Build your german vocabulary and learn them with usage examples, even when you are offline.",
+    "start_url": "/home",
+    "theme_color": "#ffffff",
+    "background_color": "#ffffff",
+    "display": "standalone",
+    "icons": [
+        {
+            "src": "favicon.ico",
+            "sizes": "48x48"
+        },
+        {
+            "src": "icons/circle.svg",
+            "sizes": "72x72 96x96",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/tire.svg",
+            "sizes": "128x128 256x256"
+        },
+        {
+            "src": "icons/wheel.svg",
+            "sizes": "512x512"
+        }
+    ]
+}
