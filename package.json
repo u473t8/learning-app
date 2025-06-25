@@ -3,6 +3,7 @@
     "shadow-cljs": "^3.1.7"
   },
   "dependencies": {
+    "@thi.ng/hiccup": "^5.3.15",
     "workbox-sw": "^7.3.0"
   }
 }

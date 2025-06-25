@@ -10,7 +10,7 @@
         <link rel="icon" href="favicon.ico" />
     </head>
     <body>
-        <button hx-get="manifest.json">Test Button</button>
+        <button hx-get="/lesson">Test Button</button>
         <script>
          if ("serviceWorker" in navigator) {
              navigator.serviceWorker.register("sw.js");
