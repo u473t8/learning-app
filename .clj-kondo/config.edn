@@ -1,1 +1,4 @@
-{:lint-as {learning-app/on-connection clojure.core/with-open}}
+{:lint-as {learning-app/on-connection clojure.core/with-open
+           learning-app/defres        clojure.core/def
+           promesa.core/doseq         clojure.core/doseq
+           promesa.core/let           clojure.core/let}}
