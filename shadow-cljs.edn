@@ -18,5 +18,5 @@
         :output-dir "resources/public/js/sw"
         :asset-path "/js/sw"
         :modules
-        {:main {:entries [learning-app]
+        {:main {:entries    [sw]
                 :web-worker true}}}}}
