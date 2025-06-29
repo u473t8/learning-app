@@ -22,6 +22,8 @@
   (resources
    ["/index.html"
     "/manifest.json"
+    "/css/styles.css"
+    "/fonts/Nunito/nunito-v26-cyrillic_latin-regular.woff2"
     "/js/htmx.min.js"
     "/favicon.ico"]))
 
@@ -109,7 +111,10 @@
    (..
     event
     (respondWith
-     (-> (.-request event)
-         (js-request->ring)
-         (learning-app/application)
-         (ring->js-response (.-request event)))))))
+     (try
+       (-> (.-request event)
+           (js-request->ring)
+           (learning-app/application)
+           (ring->js-response (.-request event)))
+       (catch :default e
+         (log/error :promise e)))))))

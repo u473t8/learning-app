@@ -19,4 +19,7 @@
         :asset-path "/js/sw"
         :modules
         {:main {:entries    [sw]
-                :web-worker true}}}}}
+                :web-worker true}}
+        :devtools
+        {:watch-dir  "resources/public/css"
+         :watch-path "/css"}}}}
