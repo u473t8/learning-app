@@ -21,4 +21,6 @@ app.db
 
 # Keep linter config
 !/.clj-kondo/config.edn
-/resources/public/sw.js
+
+# Keep js libraries
+!/resources/public/js/htmx.min.js
