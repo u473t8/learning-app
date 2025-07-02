@@ -1,6 +1,10 @@
 # Exclude
 !/classes/.gitkeep
 
+# Emacs files
+*.*#
+*.el
+
 # Caches
 /.cpcache/
 /classes
