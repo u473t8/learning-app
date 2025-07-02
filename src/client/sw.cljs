@@ -89,19 +89,17 @@
 (defn ring->js-response
   [response  ^Request request]
   ;; https://developer.mozilla.org/en-US/docs/Web/API/Response/Response
-  (if (instance? js/Response response)
-    response
-    (let [{:keys [body status headers]
-           :or   {status 200 headers {}}} response]
-      ;; Returning a cached response promise if route was not found
-      (if (= status 404)
-        (p/let [cache (js/caches.open "resources")]
-          (.match cache request))
-        (js/Response.
-         body
-         (clj->js
-          {:status  status
-           :headers headers}))))))
+  (let [{:keys [body status headers]
+         :or   {status 200 headers {}}} response]
+    ;; Returning a cached response promise if route was not found
+    (if (= status 404)
+      (p/let [cache (js/caches.open "resources")]
+        (.match cache request))
+      (js/Response.
+       body
+       (clj->js
+        {:status  status
+         :headers headers})))))
 
 
 (js/self.addEventListener
@@ -111,10 +109,7 @@
    (..
     event
     (respondWith
-     (try
-       (-> (.-request event)
-           (js-request->ring)
-           (learning-app/application)
-           (ring->js-response (.-request event)))
-       (catch :default e
-         (log/error :promise e)))))))
+     (-> (.-request event)
+         (js-request->ring)
+         (learning-app/application)
+         (ring->js-response (.-request event)))))))
