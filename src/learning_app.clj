@@ -20,7 +20,6 @@
    [ring.middleware.resource :as middleware.resource]
    [ring.middleware.session :as middleware.session]
    [ring.middleware.session.store :as session.store]
-   [sqlite.application-defined-functions]
    [tools.log :as log]
    [tools.utils :as utils])
   (:import

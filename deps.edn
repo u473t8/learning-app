@@ -23,9 +23,4 @@
 
            :build {:deps {org.clojure/clojure           {:mvn/version "1.12.0"}
                           io.github.clojure/tools.build {:git/tag "v0.10.9" :git/sha "e405aac"}}
-                   :ns-default build}
-
-           :run {:extra-deps {philoskim/debux-stubs {:mvn/version "0.9.1"}}
-                 ;; `debux-stubs` is required to prevent errors caused by leftover `debux` statements in the code.
-                 :main-opts ["-e" "(require 'debux.core)"
-                             "-m" "learning-app"]}}}
+                   :ns-default build}}}
