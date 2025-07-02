@@ -19,6 +19,7 @@
 /node_modules/
 /.shadow-cljs/
 /resources/public/js/
+/resources/public/sw.js
 
 # DB
 app.db
