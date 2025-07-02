@@ -1,4 +1,4 @@
-{:paths ["src" "resources" "classes"]
+{:paths ["src" "resources"]
 
  :deps {cheshire/cheshire                 {:mvn/version "5.13.0"}
         com.github.seancorfield/honeysql  {:mvn/version "2.6.1281"}
@@ -15,6 +15,7 @@
                                cider/cider-nrepl {:mvn/version "0.52.0"}
                                refactor-nrepl/refactor-nrepl {:mvn/version "3.10.0"}
                                philoskim/debux {:mvn/version "0.9.1"}}
+                  :extra-paths ["dev" "classes"]
                   :main-opts ["-m" "nrepl.cmdline"
                               "-b" "0.0.0.0"
                               "-p" "3333"

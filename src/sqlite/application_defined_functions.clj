@@ -102,8 +102,3 @@
         retention-level (retention-level @state)]
     (reset! state {:reviews [], :timestamps []})
     (._result this retention-level)))
-
-
-(comment
-  (binding [*compile-path* "classes"]
-    (compile (.getName *ns*))))
