@@ -9,9 +9,11 @@
  :source-paths
  ["src/client" "resources/public"]
 
- :nrepl {:middleware
-         [cider.nrepl/cider-middleware
-          refactor-nrepl.middleware/wrap-refactor]}
+ :nrepl
+ {:port 4444
+  :middleware
+  [cider.nrepl/cider-middleware
+   refactor-nrepl.middleware/wrap-refactor]}
 
  :builds
  {:app
