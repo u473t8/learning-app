@@ -14,12 +14,20 @@
           refactor-nrepl.middleware/wrap-refactor]}
 
  :builds
- {:app {:target     :browser
-        :output-dir "resources/public/js/app"
-        :asset-path "/js/app"
-        :modules
-        {:main {:entries    [sw]
-                :web-worker true}}
-        :devtools
-        {:watch-dir  "resources/public/css"
-         :watch-path "/css"}}}}
+ {:app
+  {:target     :browser
+   :output-dir "resources/public/js/app"
+   :asset-path "/js/app"
+   :modules
+   {:sw
+    {:entries    [sw]
+     :depends-on #{:shared}
+     :web-worker true}
+    :sw-loader
+    {:entries [sw-loader]
+     :depends-on #{:shared}}
+    :shared
+    {:entries []}}
+   :devtools
+   {:watch-dir  "resources/public/css"
+    :watch-path "/css"}}}}
