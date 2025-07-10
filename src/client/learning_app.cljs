@@ -97,7 +97,7 @@
 
 
 (def routes
-  [["/"
+  [["/home"
     {:get
      (fn [_]
        {:html/body (home)
@@ -132,3 +132,5 @@
     learning-app/routes
     {:data {:middleware [wrap-hiccup-render]}})
    (constantly {:status 404, :body ""})))
+
+
