@@ -113,3 +113,20 @@
          (js-request->ring)
          (learning-app/application)
          (ring->js-response (.-request event)))))))
+
+
+(js/self.addEventListener
+ "message"
+ (fn [^ExtendableMessageEvent event]
+   (log/debug :message/received ["Received a message from a client" event])
+   (when (= (.. event -data) "claim-client")
+     (log/debug :message/claim-clients "Claim clients")
+     (p/do
+       (js/self.clients.claim)
+       (log/debug :message/claim-clients "Notify sender client")
+       (.. event -source (postMessage #js {:type "controlled"}))))))
+
+
+(defn ^:dev/after-load update-registration []
+  (log/debug :dev/after-load "Update service worker")
+  (js/self.registration.update))
