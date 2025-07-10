@@ -1391,7 +1391,7 @@ Home Page
     position: absolute;
     top: 14px;
     left: 16px;
-    background-image: url(icons.svg);
+    background-image: url(/icons.svg);
     display: inline-block;
     vertical-align: middle;
 }
@@ -1444,7 +1444,7 @@ Home Page
     background-position: -373px -153px;
     height: 18px;
     width: 18px;
-    background-image: url(icons.svg);
+    background-image: url(/icons.svg);
     display: inline-block;
     vertical-align: middle;
 }
@@ -1455,7 +1455,7 @@ Home Page
     background-position: -98px -80px;
     height: 10px;
     width: 17px;
-    background-image: url(icons.svg);
+    background-image: url(/icons.svg);
     display: inline-block;
     vertical-align: middle;
 }
