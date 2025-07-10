@@ -7,6 +7,7 @@
    [honey.sql :as sql]
    [honey.sql.helpers  :as sql.helpers]
    [icons :as icons]
+   [lambdaisland.hiccup.middleware :as hiccup.middleware]
    [next.jdbc :as jdbc]
    [next.jdbc.datafy]
    [next.jdbc.prepare :as prepare]
@@ -14,12 +15,14 @@
    [next.jdbc.result-set :as result-set]
    [org.httpkit.client :as client]
    [org.httpkit.server :as srv]
+   [reitit.ring :as ring]
+   [reitit.ring.middleware.dev :as middleware.dev]
    [ring.middleware.content-type :as middleware.content-type]
    [ring.middleware.keyword-params :as middleware.keyword-params]
    [ring.middleware.params :as middleware.params]
-   [ring.middleware.resource :as middleware.resource]
    [ring.middleware.session :as middleware.session]
    [ring.middleware.session.store :as session.store]
+   [ring.util.response :as response]
    [tools.log :as log]
    [tools.utils :as utils])
   (:import
@@ -542,25 +545,16 @@ Return only the JSON object without additional text.")
 ;;
 
 (defn page
-  [& content]
+  [{:html/keys [head body]}]
   [:html
    [:head
     [:meta {:charset "UTF-8"}]
     [:meta {:name "viewport" :content "width=device-width, initial-scale=1, interactive-widget=resizes-content"}]
-    [:meta {:name "htmx-config" :content "{\"responseHandling\": [{\"code\":\"400\", \"swap\": true, \"error\": true}, {\"code\":\"200\", \"swap\": true, \"error\": false}] }"}]
-    [:link {:rel "shortcut icon" :href "data:,"}]
-    [:link {:rel "apple-touch-icon" :href "data:,"}]
-    [:link {:href "fonts/Nunito/nunito-v26-cyrillic_latin-regular.woff2" :as "font" :rel "preload" :type "font/woff2" :crossorigin "true"}]
-    [:link {:href "fonts/Nunito/nunito-v26-cyrillic_latin-700.woff2" :as "font" :rel "preload" :type "font/woff2" :crossorigin "true"}]
-    [:link {:href "fonts/Nunito/nunito-v26-cyrillic_latin-500.woff2" :as "font" :rel "preload" :type "font/woff2" :crossorigin "true"}]
-    [:link {:id "styles" :href "styles.css" :rel "stylesheet"}]
-    ;; Unminified
-    [:script {:src "https://unpkg.com/htmx.org@2.0.4/dist/htmx.js" :crossorigin "anonymous" :integrity "sha384-oeUn82QNXPuVkGCkcrInrS1twIxKhkZiFfr2TdiuObZ3n3yIeMiqcRzkIcguaof1"}]
-    ;; Minified
-    #_[:script {:src "https://unpkg.com/htmx.org@2.0.4" :crossorigin "anonymous" :integrity "sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"}]
-    [:title "Learning"]]
+    [:title "Sprecha"]
+    [:link {:rel "icon" :href "favicon.ico"}]
+    head]
    [:body
-    content]])
+    body]])
 
 
 (defn words-list-item
@@ -857,169 +851,49 @@ Return only the JSON object without additional text.")
       "ВХОД"]]]])
 
 
+(def routes
+  [["/"
+    {:get
+     (fn [_]
+       {:html/layout page
 
+        :html/head
+        [:<>
+         [:link {:rel "stylesheet" :href "/css/styles.css"}]
+         [:link {:rel "manifest" :href "/manifest.json"}]
+         [:script {:src "/js/htmx.min.js"}]
+         [:script {:src "/js/app/shared.js" :defer true}]
+         [:script {:src "/js/app/sw-loader.js" :defer true}]]
 
-(defn routes [{:keys [:request-method :uri] :as request}]
-  (log/info [(:remote-addr request) [request-method uri]])
-  (case [request-method uri]
+        :html/body
+        [:div#app
+         {:hx-get "/home"
+          :hx-trigger "controlled"
+          :hx-push-url "true"}]})}]
 
-    [:get "/"]
-    (let [db      (:db request)
-          user-id (-> request :session :user-id)
-          home    (home
-                   {:lesson-running? (lesson-running? db user-id)})]
-      (if (get-in request [:headers "hx-request"])
-        {:body    home
-         :headers {"HX-Retarget" "body"}
-         :status  200}
-        {:body   (page home)
-         :status 200}))
+   ["/js/app/sw.js"
+    {:get
+     (fn [_]
+       (-> (response/resource-response "public/js/app/sw.js")
+           (response/content-type "text/javascript")
+           (response/header "Service-Worker-Allowed" "/")))}]
 
-    [:get "/login"]
-    (if (get-in request [:headers "hx-request"])
-      {:body    (login)
-       :headers {"HX-Retarget" "body"}
-       :status  200}
-      {:body   (page (login))
-       :status 200})
+   ["/login"
+    {:get
+     (fn [_]
+       {:html/layout page
+        :html/head   [:link {:rel "stylesheet" :href "/css/styles.css"}]
+        :html/body   (login)})
 
-    [:post "/login"]
-    (let [db (:db request)
-          {:keys [:user :password]} (:params request)]
-      (log/info [user password (hash password) (str/trim password) (hash (str/trim password))])
-      (if-let [user-id (user-id db user password)]
-        {:headers {"HX-Location" "/"
-                   "HX-Push-Url" "true"}
-         :session {:user-id user-id}}
-        {:status 400
-         :headers {"HX-Retarget" "#error-message"
-                   "HX-Reswap" "textContent"}
-         :body "Неверный пароль. Повторите попытку."}))
-
-    [:get "/lesson"]
-    (let [db      (:db request)
-          user-id (-> request :session :user-id)
-          _       (start-lesson! db user-id)
-          _       (start-challenge! db user-id)
-          lesson  {:progress          (lesson-progress db user-id)
-                   :current-challenge (current-challenge db user-id)}]
-      (if (get-in request [:headers "hx-request"])
-        {:body    (lesson:view lesson)
-         :headers {"HX-Retarget" "body"}
-         :status  200}
-        {:body   (page (lesson:view lesson))
-         :status 200}))
-
-    [:patch "/lesson"]
-    (let [{:keys [user-answer]} (:params request)
-          user-id (-> request :session :user-id)
-          db (:db request)]
-      (when (some? user-answer)
-        (submit-user-answer! db user-id user-answer)
-        (let [challenge-passed? (challenge-passed? db user-id)]
-          {:body (list
-                  (when challenge-passed?
-                    (learning-session:progress (lesson-progress db user-id)))
-                  (learning-session:footer-view
-                   {:challenge-passed? challenge-passed?
-                    :challenge-answer (when-not challenge-passed?
-                                        (challenge-answer db user-id))
-                    :challenge-answer-structure (when-not challenge-passed?
-                                                  (challenge-answer db user-id))
-                    :passed-all-challenges? (passed-all-challenges? db user-id)}))
-           :status 200})))
-
-    [:delete "/lesson"]
-    (let [user-id (-> request :session :user-id)
-          db (:db request)]
-      (finish-lesson! db user-id)
-      {:headers {"HX-Location" "/"
-                 "HX-Push-Url" "true"}})
-
-    [:post "/lesson/advance"]
-    (let [user-id (-> request :session :user-id)
-          db (:db request)]
-      (next-challenge! db user-id)
-      {:body (list
-              (lesson:challenge-view (current-challenge db user-id))
-              (learning-session:footer-view))
-       :status 200})
-
-    [:post "/words"]
-    (let [{:keys [value translation]} (:params request)
-          {:keys [user-id]} (:session request)
-          db (:db request)]
-      (if (or
-           (not (string? value)) (str/blank? value)
-           (not (string? translation)) (str/blank? translation))
-        {:body (cond-> (list)
-                 (or (not (string? value)) (str/blank? value))
-                 (conj
-                  [:input.new-word-form__input.new-word-form__input--error
-                   {:hx-on:change "htmx.find('#new-word-translation').focus()"
-                    :hx-swap-oob "true"
-                    :id "new-word-value"
-                    :name "value"}])
-
-                 (or (not (string? translation)) (str/blank? translation))
-                 (conj
-                  [:input.new-word-form__input.new-word-form__input--error
-                   {:id "new-word-translation"
-                    :hx-swap-oob "true"
-                    :name "translation"}]))
-         :status 400}
-        (let [word-id (add-word! db user-id value translation)]
-          {:body (words-list-item
-                  {:id word-id
-                   :value value
-                   :translation translation
-                   :retention-level 100})
-           :status 200})))
-
-    [:get "/words"]
-    (let [{:keys [limit offset search]} (:params request)
-          limit (-> limit (or "0") parse-long)
-          offset (-> offset (or "0") parse-long)
-          db (:db request)
-          user-id (-> request :session :user-id)
-          words (words db user-id :limit limit :offset offset :search-pattern search)
-          total-words-count (total-words-count db user-id)]
-      (log/info [user-id limit offset])
-      (if (user-has-words? db user-id)
-        {:status 200
-         :body (list
-                (words-list-items
-                 {:words words
-                  :next-page-url (utils/build-url
-                                  "/words"
-                                  {:limit  limit
-                                   :offset (+ offset 5)
-                                   :search search})
-                  :show-load-more? (> total-words-count (+ offset words-list:chunk))})
-                [:div
-                 {:hx-swap-oob "delete:#splash"}])}
-        {:status 200
-         :body [:div#splash.home__splash
-                [:img
-                 {:src "images/waiting.png"
-                  :alt "waiting for some words..."}]]}))
-
-    [:put "/words"]
-    (let [{:keys [id word translation]} (:params request)
-          db (:db request)]
-      (replace-word! db id word translation)
-      {:status 200
-       :body (words-list-item
-              {:id id
-               :value word
-               :translation translation
-               :retention-level 100})})
-
-    [:delete "/words"]
-    (let [{:keys [id]} (:params request)
-          db (:db request)]
-      (remove-word! db id)
-      {:status 200})))
+     :post
+     (fn submit-login
+       [{:keys [db params]}]
+       (let [{:keys [user password]} params]
+         (log/info [user password (hash password) (str/trim password) (hash (str/trim password))])
+         (if-let [user-id (user-id db user password)]
+           (-> (response/redirect "/" :see-other)
+               (assoc :session {:user-id user-id}))
+           (response/bad-request "Невернoе имя пользователя или пароль"))))}]])
 
 
 (defn wrap-db-connection
@@ -1037,17 +911,6 @@ Return only the JSON object without additional text.")
       (handler request))))
 
 
-(defn wrap-hiccup
-  [handler]
-  (fn [request]
-    (let [response (handler request)]
-      (if (-> response :body sequential?)
-        (-> response
-            (update :body #(-> % hiccup/html str))
-            (update :headers assoc "Content-Type" "text/html"))
-        response))))
-
-
 (defn wrap-access
   [handler]
   (fn [{:keys [session uri] :as request}]
@@ -1063,16 +926,25 @@ Return only the JSON object without additional text.")
       :else (handler request))))
 
 
+(defn ring-handler
+  []
+  (ring/ring-handler
+   ;; Main handler
+   (ring/router
+    routes
+    {:reitit.middleware/transform middleware.dev/print-request-diffs
+     :data {:middleware [hiccup.middleware/wrap-render]}})
+   ;; Default handler
+   (ring/routes
+    (ring/create-resource-handler {:path "/"})
+    (ring/create-default-handler))))
+
+
 (def app
-  (-> routes
-      (wrap-hiccup)
-      (wrap-access)
-      (middleware.resource/wrap-resource "public")
-      (middleware.content-type/wrap-content-type)
-      (middleware.keyword-params/wrap-keyword-params)
-      (middleware.params/wrap-params)
-      (wrap-session)
-      (wrap-db-connection)))
+  ;; TODO: replace keyword with env
+  (if :dev-mode?
+    (ring/reloading-ring-handler #'ring-handler)
+    (ring-handler)))
 
 
 (defonce server (atom nil))
