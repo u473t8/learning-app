@@ -1,13 +1,11 @@
-(ns learning-app
+(ns core
   (:gen-class)
   (:require
    [cheshire.core :as cheshire]
-   [clojure.string :as str]
-   [hiccup2.core :as hiccup]
+   [hiccup :as hiccup]
    [honey.sql :as sql]
    [honey.sql.helpers  :as sql.helpers]
-   [icons :as icons]
-   [lambdaisland.hiccup.middleware :as hiccup.middleware]
+   [layout :as layout]
    [next.jdbc :as jdbc]
    [next.jdbc.datafy]
    [next.jdbc.prepare :as prepare]
@@ -17,14 +15,12 @@
    [org.httpkit.server :as srv]
    [reitit.ring :as ring]
    [reitit.ring.middleware.dev :as middleware.dev]
-   [ring.middleware.content-type :as middleware.content-type]
-   [ring.middleware.keyword-params :as middleware.keyword-params]
-   [ring.middleware.params :as middleware.params]
-   [ring.middleware.session :as middleware.session]
+   [ring.middleware.session :as session]
    [ring.middleware.session.store :as session.store]
+   [ring.middleware.reload :as reload]
    [ring.util.response :as response]
-   [tools.log :as log]
-   [tools.utils :as utils])
+   [taoensso.telemere :as telemere]
+   [utils])
   (:import
    [java.sql PreparedStatement ResultSetMetaData]
    [org.sqlite Function]
@@ -43,6 +39,9 @@
 (defn open-ai-service-account-api-key
   []
   (System/getenv "OPEN_AI_KEY"))
+
+
+(def dev-mode? (or (System/getenv "LEARNING_APP__ENVIRONMENT") true))
 
 
 (def system-prompt
@@ -155,16 +154,17 @@ Return only the JSON object without additional text.")
                                              {:time (System/currentTimeMillis)
                                               :query sql-params#})
                                            (fn [_sym# state# result#]
-                                             (let [message# {:time   (str (- (System/currentTimeMillis) (:time state#)) " ms")
-                                                             :query  (:query state#)
-                                                             :result result#}]
-                                               (if (instance? Throwable result#)
-                                                 (log/error message#)
-                                                 (log/info message#)))))
+                                             (let [data# {:time   (str (- (System/currentTimeMillis) (:time state#)) " ms")
+                                                          :query  (:query state#)
+                                                          :result result#}
+                                                   log-level# (if (instance? Throwable result#)
+                                                                :error
+                                                                :debug)]
+                                               (telemere/log! {:level :error :id :sql/connection :data data#}))))
                                          (jdbc/with-options jdbc/unqualified-snake-kebab-opts))]
 
-     (Function/create (p/unwrap ~sym) "normalize_german" (NormalizeGerman.))
-     (Function/create (p/unwrap ~sym) "retention_level" (RetentionLevel.))
+    (Function/create (p/unwrap ~sym) "normalize_german" (NormalizeGerman.))
+    (Function/create (p/unwrap ~sym) "retention_level" (RetentionLevel.))
 
      ;; Enable foreign key constraints in SQLite, as they are disabled by default.
      ;; This constraint must be enabled separately for each connection.
@@ -815,87 +815,6 @@ Return only the JSON object without additional text.")
    (learning-session:footer-view)])
 
 
-(defn login
-  []
-  [:div.login-page
-   [:form.login-page__form
-    {:hx-post "/login"
-     :hx-indicator "#loader"
-     :hx-swap "none"}
-    [:h1.login-page__header
-     "Вход"]
-    [:div.login-page__input.input
-     [:input.login-page__input.input__input-area
-      {:id "email"
-       :type "text"
-       :autocomplete "email"
-       :name "user"
-       :placeholder "Email или имя пользователя"}]
-     [:button.input__clear-button
-      {:hx-on:click "htmx.find('#email').value = ''; htmx.find('#email').focus()"}
-      icons/cancel]]
-    [:div.login-page__input.input
-     [:input.input__input-area
-      {:id "password"
-       :type "password"
-       :autocomplete "current-password"
-       :name "password"
-       :placeholder "Пароль"}]]
-    [:div.login-page__error-message
-     {:id "error-message"}]
-    [:button.big-button.blue-button
-     {:type "submit"}
-     [:div.big-button__loader.htmx-indicator
-      {:id "loader"}]
-     [:span.big-button__label
-      "ВХОД"]]]])
-
-
-(def routes
-  [["/"
-    {:get
-     (fn [_]
-       {:html/layout page
-
-        :html/head
-        [:<>
-         [:link {:rel "stylesheet" :href "/css/styles.css"}]
-         [:link {:rel "manifest" :href "/manifest.json"}]
-         [:script {:src "/js/htmx.min.js"}]
-         [:script {:src "/js/app/shared.js" :defer true}]
-         [:script {:src "/js/app/sw-loader.js" :defer true}]]
-
-        :html/body
-        [:div#app
-         {:hx-get "/home"
-          :hx-trigger "controlled"
-          :hx-push-url "true"}]})}]
-
-   ["/js/app/sw.js"
-    {:get
-     (fn [_]
-       (-> (response/resource-response "public/js/app/sw.js")
-           (response/content-type "text/javascript")
-           (response/header "Service-Worker-Allowed" "/")))}]
-
-   ["/login"
-    {:get
-     (fn [_]
-       {:html/layout page
-        :html/head   [:link {:rel "stylesheet" :href "/css/styles.css"}]
-        :html/body   (login)})
-
-     :post
-     (fn submit-login
-       [{:keys [db params]}]
-       (let [{:keys [user password]} params]
-         (log/info [user password (hash password) (str/trim password) (hash (str/trim password))])
-         (if-let [user-id (user-id db user password)]
-           (-> (response/redirect "/" :see-other)
-               (assoc :session {:user-id user-id}))
-           (response/bad-request "Невернoе имя пользователя или пароль"))))}]])
-
-
 (defn wrap-db-connection
   [handler]
   (fn [request]
@@ -907,43 +826,133 @@ Return only the JSON object without additional text.")
   [handler]
   (fn [request]
     (let [db (:db request)
-          handler (middleware.session/wrap-session handler {:store (->Sessions db)})]
+          handler (session/wrap-session handler {:store (->Sessions db)})]
       (handler request))))
 
 
 (defn wrap-access
   [handler]
-  (fn [{:keys [session uri] :as request}]
-    (cond
-      (and (empty? session) (not= uri "/login"))
-      {:status 302
-       :headers {"Location" "/login"}}
-
-      (and (seq session) (= uri "/login"))
-      {:status 302
-       :headers {"Location" "/"}}
-
-      :else (handler request))))
+  (fn [{:keys [session] :as request}]
+    (when (seq session)
+      (handler request))))
 
 
-(defn ring-handler
-  []
+(defn service-worker-handler
+  [request]
+  (when (-> request :uri (= "/js/app/sw.js"))
+    (-> (response/resource-response "public/js/app/sw.js")
+        (response/content-type "text/javascript")
+        (response/header "Service-Worker-Allowed" "/"))))
+
+
+(def protected-routes
+  (ring/ring-handler
+   ;; Main handler
+   (ring/router [])
+
+   ;; Default handler
+   (fn [_]
+     {:html/layout layout/page
+
+      :html/head
+      [:<>
+       [:link {:rel "manifest" :href "/manifest.json"}]
+       [:script {:src "/js/app/shared.js" :defer true}]
+       [:script {:src "/js/app/sw-loader.js" :defer true}]]
+
+      :html/body
+      [:div#app
+       {:hx-get "/home"
+        :hx-on:controlled "navigator.serviceWorker.getRegistration().then(r => console.log(r))"
+        :hx-trigger "controlled"
+        :hx-push-url "true"}]})
+
+   {:middleware
+    [wrap-db-connection
+     wrap-session
+     wrap-access
+     hiccup/wrap-render]}))
+
+
+(def public-routes
   (ring/ring-handler
    ;; Main handler
    (ring/router
-    routes
-    {:reitit.middleware/transform middleware.dev/print-request-diffs
-     :data {:middleware [hiccup.middleware/wrap-render]}})
+    [["/login"
+      {:get
+       (fn [_]
+         {:html/layout page
+
+          :html/head
+          [:link {:rel "stylesheet" :href "/css/styles.css"}]
+
+          :html/body
+          [:div.login-page
+           [:form.login-page__form
+            {:hx-post "/login"
+             :hx-indicator "#loader"
+             :hx-swap "none"}
+            [:h1.login-page__header
+             "Вход"]
+            [:div.login-page__input.input
+             [:input.login-page__input.input__input-area
+              {:id "email"
+               :type "text"
+               :autocomplete "email"
+               :name "user"
+               :placeholder "Email или имя пользователя"}]
+             [:button.input__clear-button
+              {:hx-on:click "htmx.find('#email').value = ''; htmx.find('#email').focus()"}
+              #_icons/cancel]]
+            [:div.login-page__input.input
+             [:input.input__input-area
+              {:id "password"
+               :type "password"
+               :autocomplete "current-password"
+               :name "password"
+               :placeholder "Пароль"}]]
+            [:div.login-page__error-message
+             {:id "error-message"}]
+            [:button.big-button.blue-button
+             {:type "submit"}
+             [:div.big-button__loader.htmx-indicator
+              {:id "loader"}]
+             [:span.big-button__label
+              "ВХОД"]]]]})
+
+       :post
+       (fn submit-login
+         [{:keys [db params]}]
+         (let [{:keys [user password]} params]
+           (if-let [user-id (user-id db user password)]
+             (-> (response/redirect "/" :see-other)
+                 (assoc :session {:user-id user-id}))
+             (response/bad-request "Невернoе имя пользователя или пароль"))))}]]
+
+    {:reitit.middleware/transform
+     middleware.dev/print-request-diffs
+
+     :data
+     {:middleware
+      [hiccup/wrap-render]}})
+
    ;; Default handler
-   (ring/routes
+   (constantly (response/redirect "/login"))))
+
+
+(def ring-handler
+  #(ring/routes
+    service-worker-handler
     (ring/create-resource-handler {:path "/"})
-    (ring/create-default-handler))))
+    protected-routes
+    public-routes))
 
 
 (def app
-  ;; TODO: replace keyword with env
-  (if :dev-mode?
-    (ring/reloading-ring-handler #'ring-handler)
+  (if dev-mode?
+    (-> #'ring-handler
+        (ring/reloading-ring-handler)
+        (reload/wrap-reload))
     (ring-handler)))
 
 
