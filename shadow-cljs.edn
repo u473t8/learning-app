@@ -8,7 +8,7 @@
   [refactor-nrepl/refactor-nrepl "3.9.0"]]
 
  :source-paths
- ["src/client" "resources/public"]
+ ["src/shared" "src/client" "dev/cljs"]
 
  :nrepl
  {:port 4444

@@ -2,12 +2,11 @@
 ;; https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API
 ;;
 (ns sw
-  (:require-macros [sw :refer [resources]])
   (:require
+   [application :as application]
    [clojure.string :as str]
    [lambdaisland.glogi :as log]
    [lambdaisland.glogi.console :as glogi-console]
-   [learning-app]
    [promesa.core :as p]))
 
 
@@ -18,33 +17,28 @@
  {:glogi/root :all})
 
 
-(def resources
-  (resources
-   ["/index.html"
-    "/manifest.json"
-    "/css/styles.css"
-    "/fonts/Nunito/nunito-v26-cyrillic_latin-regular.woff2"
-    "/js/htmx.min.js"
-    "/favicon.ico"]))
+(def precache-url
+  ["/"
+   "/manifest.json"
+   "/css/styles.css"
+   "/fonts/Nunito/nunito-v26-cyrillic_latin-regular.woff2"
+   "/fonts/Nunito/nunito-v26-cyrillic_latin-500.woff2"
+   "/fonts/Nunito/nunito-v26-cyrillic_latin-700.woff2"
+   "/fonts/Nunito/nunito-v26-cyrillic_latin-800.woff2"
+   "/js/htmx/htmx.min.js"
+   "/js/htmx/idiomorph-ext.min.js"
+   "/favicon.ico"
+   "/icons.svg"
+   "/js/app/shared.js"
+   "/js/app/sw-loader.js"])
 
 
 (js/self.addEventListener
  "install"
- (fn [event]
+ (fn [^InstallEvent event]
    (log/debug :install event)
-   (..
-    event
-    (waitUntil
-     (p/let [cache (js/caches.open "resources")]
-       (p/doseq [{:keys [url revision]} resources]
-         (p/let [cached-response (.match cache url)]
-           (if (some? cached-response)
-             (p/let [body (.text cached-response)]
-               (when (not= (hash body) revision)
-                 (log/debug :add-cache {:url url :revision revision})
-                 (.add cache url)))
-             (p/promise
-              (.add cache url))))))))))
+   (p/let [cache (js/caches.open "resources")]
+     (.addAll cache precache-url))))
 
 
 (defn full-url
@@ -59,60 +53,43 @@
    (..
     event
     (waitUntil
-     (p/do
-       (p/let [cache           (js/caches.open "resources")
-               cached-requests (.keys cache)
-               resource-urls   (->> resources (map :url) (map full-url) set)]
-         (p/doseq [cached-request cached-requests]
-           (let [cached-url (.-url cached-request)]
-             (when-not (contains? resource-urls cached-url)
-               (log/debug :delete-cache {:url cached-url})
-               (.delete cache cached-url)))))
-       (.claim js/self.clients))))))
+     (js/self.clients.claim)))))
 
 
-(defn js-request->ring
-  [^Request request]
-  (let [url-object (js/URL. (.-url request))]
-    ;; https://github.com/ring-clojure/ring/wiki/Concepts#requests
-    {:server-port    (.-port url-object)
-     :server-name    (.-hostname url-object)
-     :uri            (.-pathname url-object)
-     :url            (.-url request)
-     :query-string   (.-search url-object)
-     :sheme          (-> url-object .-protocol (str/replace #":" "") keyword)
-     :request-method (-> request .-method str/lower-case keyword)
-     :headers        (.-headers request)
-     :body           (.-body request)}))
-
-
-(defn ring->js-response
-  [response  ^Request request]
-  ;; https://developer.mozilla.org/en-US/docs/Web/API/Response/Response
-  (let [{:keys [body status headers]
-         :or   {status 200 headers {}}} response]
-    ;; Returning a cached response promise if route was not found
-    (if (= status 404)
-      (p/let [cache (js/caches.open "resources")]
-        (.match cache request))
-      (js/Response.
-       body
-       (clj->js
-        {:status  status
-         :headers headers})))))
+(defn wrap-js
+  [handler]
+  (fn [request]
+    (let [url-object (js/URL. (.-url request))
+          ;; https://github.com/ring-clojure/ring/wiki/Concepts#requests
+          ring-request {:server-port    (.-port url-object)
+                        :server-name    (.-hostname url-object)
+                        :uri            (.-pathname url-object)
+                        :url            (.-url request)
+                        :query-string   (.-search url-object)
+                        :sheme          (-> url-object .-protocol (str/replace #":" "") keyword)
+                        :request-method (-> request .-method str/lower-case keyword)
+                        :headers        (.-headers request)
+                        :body           (.-body request)}
+          ring-response (handler ring-request)]
+      (js/console.log ::ring-response ring-response)
+      (when-not (= (:status ring-response) 404)
+        ;; https://developer.mozilla.org/en-US/docs/Web/API/Response/Response
+        (js/Response.
+         (:body ring-response)
+         (clj->js
+          (select-keys ring-response [:status :headers])))))))
 
 
 (js/self.addEventListener
  "fetch"
- (fn [^FetchEvent event] ; https://developer.mozilla.org/en-US/docs/Web/API/FetchEvent
-   (log/debug :fetch-event event)
+ (fn [^FetchEvent event]
+   (log/debug :fetch-url (.. event -request -url))
    (..
     event
     (respondWith
-     (-> (.-request event)
-         (js-request->ring)
-         (learning-app/application)
-         (ring->js-response (.-request event)))))))
+     (p/let [request (.. event -request)
+             match   (js/caches.match request)]
+       (or match ((wrap-js application/routes) request)))))))
 
 
 (js/self.addEventListener

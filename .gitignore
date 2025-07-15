@@ -18,8 +18,7 @@
 # Client tools and artifacts
 /node_modules/
 /.shadow-cljs/
-/resources/public/js/
-/resources/public/sw.js
+/resources/public/js/app
 
 # DB
 app.db
@@ -28,4 +27,5 @@ app.db
 !/.clj-kondo/config.edn
 
 # Keep js libraries
-!/resources/public/js/htmx.min.js
+!/resources/public/js/htmx/
+!/resources/public/js/htmx/**
