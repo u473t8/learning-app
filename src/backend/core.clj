@@ -989,10 +989,4 @@ Return only the JSON object without additional text.")
 
 
 (comment
-  (-main)
-
-  (require '[clojure.repl.deps :as deps])
-
-  (deps/sync-deps)
-
-  (hash "sKLUh9-polh1!@#4"))
+)
