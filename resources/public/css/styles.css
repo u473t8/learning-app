@@ -1543,7 +1543,7 @@ Home Page
     color: var(--__internal__color);
     cursor: pointer;
     display: flex;
-    font-size: 17;
+    font-size: 17px;
     font-weight: 700;
     height: var(--__internal__height);
     justify-content: center;
