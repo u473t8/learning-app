@@ -32,7 +32,8 @@
     :shared
     {:entries []}}
    :devtools
-   {:watch-dir  "resources/public/css"
-    :watch-path "/css"
-    :preloads [debux.preloads]}
+   {:devtools-url "https://sprecha.local/shadow-cljs"
+    :preloads [debux.preloads]
+    :watch-dir  "resources/public/css"
+    :watch-path "/css"}
    :release-stubs #{debux.core}}}}

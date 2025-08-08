@@ -1,0 +1,32 @@
+server {
+    listen 80;
+    server_name sprecha.local;
+
+    # Redirect all HTTP to HTTPS
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name sprecha.local;
+
+    ssl_certificate     /home/u473t8/Projects/learning-app/certs/sprecha.local+3.pem;
+    ssl_certificate_key /home/u473t8/Projects/learning-app/certs/sprecha.local+3-key.pem;
+
+    # Dev WebSocket
+    location /shadow-cljs/ {
+        proxy_pass http://localhost:9630/;
+
+        # WebSocket specific headers: https://nginx.org/ru/docs/http/websocket.html
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_read_timeout 1h;
+    }
+
+    location / {
+    	  proxy_pass http://localhost:8083;
+    	  proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
