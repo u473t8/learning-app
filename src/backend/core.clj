@@ -560,7 +560,7 @@ Return only the JSON object without additional text.")
     [:meta {:charset "UTF-8"}]
     [:meta {:name "viewport" :content "width=device-width, initial-scale=1, interactive-widget=resizes-content"}]
     [:title "Sprecha"]
-    [:link {:rel "icon" :href "favicon.ico"}]
+    [:link {:rel "icon" :href "/favicon.ico"}]
     head]
    [:body
     body]])
