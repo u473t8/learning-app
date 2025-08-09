@@ -2,6 +2,7 @@
   (:gen-class)
   (:require
    [cheshire.core :as cheshire]
+   [clojure.string :as str]
    [hiccup :as hiccup]
    [honey.sql :as sql]
    [honey.sql.helpers  :as sql.helpers]
@@ -23,6 +24,9 @@
    [utils])
   (:import
    [java.sql PreparedStatement ResultSetMetaData]
+   [java.util HexFormat]
+   [javax.crypto Mac]
+   [javax.crypto.spec SecretKeySpec]
    [org.sqlite Function]
    [sqlite.application-defined-functions NormalizeGerman RetentionLevel]))
 
@@ -42,6 +46,11 @@
 
 
 (def dev-mode? (or (System/getenv "LEARNING_APP__ENVIRONMENT") true))
+
+(def db-auth-secret
+  (if dev-mode?
+    "secret"
+    (System/getenv "LEARNING_APP_DB_AUTH_SECRET")))
 
 
 (def system-prompt
@@ -830,48 +839,60 @@ Return only the JSON object without additional text.")
       (handler request))))
 
 
-(defn wrap-access
-  [handler]
-  (fn [{:keys [session] :as request}]
-    (when (seq session)
-      (handler request))))
-
-
 (defn service-worker-handler
   [request]
   (when (-> request :uri (= "/js/app/sw.js"))
     (-> (response/resource-response "public/js/app/sw.js")
         (response/content-type "text/javascript")
         (response/header "Service-Worker-Allowed" "/"))))
+(defn hmac-sign
+  [^String user-name ^String secret]
+  (.formatHex
+   (HexFormat/of)
+   (.doFinal
+    (doto (Mac/getInstance "HmacSHA256")
+      (.init (SecretKeySpec. (.getBytes secret) "HmacSHA256")))
+    (.getBytes user-name))))
 
 
 (def protected-routes
   (ring/ring-handler
    ;; Main handler
-   (ring/router [])
+   (ring/router
+    ["/auth/check"
+     {:get
+      (fn [{:keys [session] :as _request}]
+        (if (seq session)
+          (let [user-name  (-> session :user-id str)
+                user-roles [(str "u:" user-name)]
+                token      (hmac-sign user-name db-auth-secret)]
+            ;; https://docs.couchdb.org/en/stable/api/server/authn.html#proxy-authentication
+            (-> {:status 200}
+                (response/header "X-Auth-UserName" user-name)
+                (response/header "X-Auth-Roles" (str/join "," user-roles))
+                (response/header "X-Auth-Token" token)))
+          {:status 401}))}])
 
    ;; Default handler
-   (fn [_]
-     {:html/layout layout/page
+   (hiccup/wrap-render
+    (fn [_]
+      {:html/layout layout/page
 
-      :html/head
-      [:<>
-       [:link {:rel "manifest" :href "/manifest.json"}]
-       [:script {:src "/js/app/shared.js" :defer true}]
-       [:script {:src "/js/app/sw-loader.js" :defer true}]]
+       :html/head
+       [:<>
+        [:link {:rel "manifest" :href "/manifest.json"}]
+        [:script {:src "/js/app/shared.js" :defer true}]
+        [:script {:src "/js/app/sw-loader.js" :defer true}]]
 
-      :html/body
-      [:div#app
-       {:hx-get "/home"
-        :hx-on:controlled "navigator.serviceWorker.getRegistration().then(r => console.log(r))"
-        :hx-trigger "controlled"
-        :hx-push-url "true"}]})
+       :html/body
+       [:div#app
+        {:hx-get "/home"
+         :hx-trigger "controlled"
+         :hx-push-url "true"}]}))
 
    {:middleware
     [wrap-db-connection
-     wrap-session
-     wrap-access
-     hiccup/wrap-render]}))
+     wrap-session]}))
 
 
 (def public-routes
