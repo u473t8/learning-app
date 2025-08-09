@@ -10,8 +10,8 @@ server {
     listen 443 ssl;
     server_name sprecha.local;
 
-    ssl_certificate     /home/u473t8/Projects/learning-app/certs/sprecha.local+3.pem;
-    ssl_certificate_key /home/u473t8/Projects/learning-app/certs/sprecha.local+3-key.pem;
+    ssl_certificate     ${NGINX_CERTS_DIR}/sprecha.local+3.pem;
+    ssl_certificate_key ${NGINX_CERTS_DIR}/sprecha.local+3-key.pem;
 
     # Dev WebSocket
     location /shadow-cljs/ {
@@ -22,6 +22,42 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "Upgrade";
         proxy_read_timeout 1h;
+    }
+
+    # Clear client's proxy-auth header, not allowed
+    proxy_set_header X-Auth-CouchDB-UserName "";
+    proxy_set_header X-Auth-CouchDB-Roles    "";
+    proxy_set_header X-Auth-CouchDB-Token    "";
+
+    location /db/ {
+        # 1. Ask backend to validate request
+        auth_request /auth/check;
+
+        # 2. Take user/roles from the auth subrequest response headers
+        auth_request_set $couch_user  $upstream_http_x_auth_user;
+        auth_request_set $couch_roles $upstream_http_x_auth_roles;
+        auth_request_set $couch_token $upstream_http_x_auth_token;
+
+        # 3. Inject CouchDB proxy-auth headers
+        proxy_set_header X-Auth-CouchDB-UserName $couch_user;
+        proxy_set_header X-Auth-CouchDB-Roles    $couch_roles;
+        proxy_set_header X-Auth-CouchDB-Token    $couch_token;
+
+        # 4. Proxy to CouchDB
+        proxy_pass http://localhost:5984/;
+
+        proxy_redirect off;
+        # Proxy buffering must be disabled, or continuous replication will not function correctly behind nginx.
+        proxy_buffering off;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location /auth/check {
+        internal;
+        proxy_pass http://localhost:8083/auth/check;
+        proxy_set_header Content-Length "";
+        proxy_pass_request_body off;
     }
 
     location / {

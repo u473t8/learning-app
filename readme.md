@@ -1,7 +1,7 @@
 # Learning application
 
 
-## &#x1F6E0;&#xFE0E; Конфигурация инфраструктуры ##
+## &#x1F6E0;&#xFE0E; Конфигурация прод инфраструктуры ##
 
 
 ```shell
@@ -23,7 +23,7 @@ chmod +x infra/postrm
 #### Собрать deb ####
 
 ```shell
-dpkg-deb --build infra learning-app-infra.deb
+dpkg-deb --build infra/production learning-app-infra.deb
 ```
 
 ---
