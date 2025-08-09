@@ -14,8 +14,11 @@
     [:link {:rel "preload" :href "/fonts/Nunito/nunito-v26-cyrillic_latin-700.woff2" :as "font" :type "font/woff2" :crossorigin true}]
     [:link {:rel "preload" :href "/fonts/Nunito/nunito-v26-cyrillic_latin-800.woff2" :as "font" :type "font/woff2" :crossorigin true}]
     [:link {:rel "stylesheet" :href "/css/styles.css"}]
+    [:link {:rel "manifest" :href "/manifest.json"}]
     [:script {:src "/js/htmx/htmx.min.js"}]
     [:script {:src "/js/htmx/idiomorph-ext.min.js"}]
+    [:script {:src "/js/app/shared.js" :defer true}]
+    [:script {:src "/js/app/sw-loader.js" :defer true}]
     head]
    [:body
     {:hx-ext "morph"}

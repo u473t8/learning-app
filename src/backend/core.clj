@@ -878,12 +878,6 @@ Return only the JSON object without additional text.")
     (fn [_]
       {:html/layout layout/page
 
-       :html/head
-       [:<>
-        [:link {:rel "manifest" :href "/manifest.json"}]
-        [:script {:src "/js/app/shared.js" :defer true}]
-        [:script {:src "/js/app/sw-loader.js" :defer true}]]
-
        :html/body
        [:div#app
         {:hx-get "/home"
