@@ -8,7 +8,7 @@
     [:meta {:charset "UTF-8"}]
     [:meta {:name "viewport" :content "width=device-width, initial-scale=1, interactive-widget=resizes-content"}]
     [:title "Sprecha"]
-    [:link {:rel "icon" :href "favicon.ico"}]
+    [:link {:rel "icon" :href "/favicon.ico"}]
     ;; Preventing FOUT here (https://web.dev/articles/preload-optional-fonts)
     [:link {:rel "preload" :href "/fonts/Nunito/nunito-v26-cyrillic_latin-500.woff2" :as "font" :type "font/woff2" :crossorigin true}]
     [:link {:rel "preload" :href "/fonts/Nunito/nunito-v26-cyrillic_latin-700.woff2" :as "font" :type "font/woff2" :crossorigin true}]
