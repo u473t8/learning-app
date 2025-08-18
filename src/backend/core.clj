@@ -13,7 +13,7 @@
    [next.jdbc.protocols :as p]
    [next.jdbc.result-set :as result-set]
    [org.httpkit.client :as client]
-   [org.httpkit.server :as srv]
+   [org.httpkit.server :as server]
    [reitit.ring :as ring]
    [reitit.ring.middleware.dev :as middleware.dev]
    [ring.middleware.session :as session]
@@ -976,13 +976,13 @@ Return only the JSON object without additional text.")
 
 (defn start-server!
   [app port]
-  (reset! server (srv/run-server #'app {:port port, :legacy-return-value? false})))
+  (reset! server (server/run-server #'app {:port port, :legacy-return-value? false})))
 
 
 (defn stop-server!
   []
   (when (some? @server)
-    (when-let [stopping-promise (srv/server-stop! @server)]
+    (when-let [stopping-promise (server/server-stop! @server)]
       @stopping-promise
       (reset! server nil))))
 
@@ -990,7 +990,7 @@ Return only the JSON object without additional text.")
 (defn restart-server!
   [app port]
   (if @server
-    (when-some [stopping-promise (srv/server-stop! @server)]
+    (when-some [stopping-promise (server/server-stop! @server)]
       @stopping-promise
       (start-server! app port))
     (start-server! app port)))
