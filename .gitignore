@@ -30,3 +30,6 @@ app.db
 !/resources/public/js/htmx/
 !/resources/public/js/htmx/**
 /certs/
+
+# Keep emacs config
+!.dir-locals.el
