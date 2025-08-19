@@ -832,6 +832,10 @@ Return only the JSON object without additional text.")
 
 
 (defn wrap-session
+  "Wrap the handler to add a `:session` value to the request if it contains a valid user cookie.
+
+   The session is a map with the following keys:
+   - `:user-id` (string) — ID of the authenticated user."
   [handler]
   (fn [request]
     (let [db (:db request)
