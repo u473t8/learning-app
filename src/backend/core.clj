@@ -1,8 +1,10 @@
 (ns core
   (:gen-class)
   (:require
+   [buddy.hashers :as hashers]
    [cheshire.core :as cheshire]
    [clojure.string :as str]
+   [db :as db]
    [hiccup :as hiccup]
    [honey.sql :as sql]
    [honey.sql.helpers  :as sql.helpers]
@@ -214,9 +216,24 @@ Return only the JSON object without additional text.")
 ;;
 
  (defn user-id
-   [db user-name password]
-   (let [user (jdbc/execute-one! db ["select id from users where name = ? and password = ? " user-name (hash password)])]
-     (:id user)))
+  [db user-name password]
+  (let [user (jdbc/execute-one! db ["SELECT id, password FROM users WHERE name = ?" user-name])]
+    (when (:valid (hashers/verify password (:password user)))
+      (:id user))))
+
+
+(defn add-user
+  [db user-name password]
+  ;; create user in SQLite DB
+  (let [password-hash (hashers/derive password {:alg :argon2id})
+        {:keys [id]}  (jdbc/execute-one! db ["INSERT INTO users (name, password) VALUES (?, ?) RETURNING id" user-name password-hash])
+
+        ;; create user DB in CouchDB
+        couch-db (db/use (str "userdb-" id))]
+
+    ;; create user role in CouchDB
+    (db/secure couch-db {:members {:names [], :roles [(str "u:" id)]}})))
+
 
 ;;
 ;; User Session
