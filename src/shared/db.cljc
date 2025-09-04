@@ -1,0 +1,429 @@
+(ns db
+  (:refer-clojure :exclude [find get remove use])
+  (:require
+   #?(:clj [cheshire.core :as cheshire])
+   #?(:clj [clojure.core :as clojure])
+   #?(:clj [org.httpkit.client :as client])
+   #?(:clj [taoensso.telemere :as telemere])
+   #?(:clj [clojure.walk :as walk])
+   #?(:cljs ["pouchdb" :as PouchDB])
+   #?(:cljs [lambdaisland.glogi :as log])
+   #?(:cljs ["pouchdb-find" :as PouchFind])
+   [clojure.string :as str]
+   [promesa.core :as p]))
+
+#?(:cljs (.plugin PouchDB PouchFind))
+
+(def conn
+  {:scheme   "http"
+   :host     "localhost"
+   :port     5984
+   :username "admin"
+   :password "3434"})
+
+
+#?(:clj
+   (defmacro raise
+     [msg map]
+     `(throw
+       (ex-info ~msg ~map))))
+
+
+(defn couch->clj
+  "Recursively transforms CouchDB response into Clojure structure."
+  [x]
+  (let [keyfn (fn [k]
+                (keyword
+                 (let [k' (str/replace (name k) #"_" "-")]
+                   (if (str/starts-with? (name k) "_")
+                     (str \_ (subs k' 1))
+                     k'))))
+        f (fn thisfn [x]
+            #?(:clj (walk/prewalk (fn [x]
+                                    (cond-> x
+                                      (map? x) (update-keys keyfn))) x)
+               :cljs (cond
+                       (seq? x)
+                       (doall (map thisfn x))
+
+                       (coll? x)
+                       (into (empty x) (map thisfn x))
+
+                       (array? x)
+                       (vec (map thisfn x))
+
+                       (identical? (type x) js/Object)
+                       (into {} (for [k (js-keys x)]
+                                  [(keyfn k) (thisfn (aget x k))]))
+
+                       :else x)))]
+    (f x)))
+
+
+(defn clj->couch
+  "Recursively transforms Clojure structure into CouchDB document."
+  [x]
+  (let [keyfn (fn [k]
+                (str/replace (name k) #"-" "_"))]
+    #?(:clj  (walk/prewalk (fn [x]
+                             (cond-> x
+                               (map? x) (update-keys keyfn))) x)
+       :cljs (when-not (nil? x)
+               (cond
+                 (keyword? x) (name x)
+                 (symbol? x) (str x)
+                 (map? x) (let [m (js-obj)]
+                            (doseq [[k v] x]
+                              (aset m (keyfn k) (clj->couch v)))
+                            m)
+                 (coll? x) (let [arr (array)]
+                             (doseq [x (map clj->js x)]
+                               (.push arr x))
+                             arr)
+                 :else x)))))
+
+
+#?(:clj
+   (defn request-sync
+     "opts:
+      - `url`
+      - `method`
+      - `headers`
+      - `query-params`
+      - `body`
+      - `basic-auth`"
+     [opts]
+     (client/request
+      (-> opts
+          ;; Serialize body
+          (update :body cheshire/generate-string)
+          ;; Compose the full url
+          (update :url #(str (:scheme conn) "://" (:host conn) ":" (:port conn) "/" %))
+          ;; Use basic authorization
+          (assoc :basic-auth [(:username conn) (:password conn)])
+          ;; Conver query params to snake_case
+          (update :query-params update-keys clj->couch))
+      (fn [{:keys [headers] :as response}]
+        (cond-> response ; Deserialize JSON body
+          (str/includes? (:content-type headers) "application/json")
+          (update :body cheshire/parse-string keyword))))))
+
+
+#?(:clj
+   (defn request
+     "opts:
+      - `url`
+      - `method`
+      - `headers`
+      - `query-params`
+      - `body`
+      - `basic-auth`"
+     [opts]
+     (p/create
+      (fn [resolve reject]
+        (let [response (request-sync opts)]
+          (if (-> response (:status 0) (< 400))
+            (resolve (:body response))
+            (reject response)))))))
+
+
+#?(:clj
+   (defn exists?
+     "Returns true if database exists.
+
+      `dbname` (*string*) - name of the database"
+     [dbname]
+     (let [response (request-sync {:method :head, :url dbname})]
+       (not= (:status response) 404))))
+
+
+#?(:clj
+   (defn create
+     [dbname]
+     (let [response (request-sync {:method :put, :url dbname})]
+       (case (:status response)
+         (201 202) (-> response :body :ok)
+         (raise "DB was not created" (:body response))))))
+
+
+(defn use
+  "Creates a database or opens an existing one.
+   Returns a database instance.
+
+  `dbname` (*string*) - name of the database "
+  [dbname]
+  #?(:clj
+     (do
+       (when-not (exists? dbname)
+         (create dbname))
+       {:name dbname})
+     :cljs
+     (PouchDB. dbname)))
+
+
+(defmacro with-couch-op
+  [op-id body]
+  `(p/catch
+    (p/-> ~body couch->clj)
+    (fn [error#]
+      #?(:clj  (telemere/log! {:level :error :id ~op-id :data error#})
+         :cljs (log/error ~op-id error#)))))
+
+
+#?(:clj
+   (defn secure
+     "Returns the current security object from the specified database.
+
+      Configuration:
+      - `admins` (*object*) – Object with two fields as names and roles. See description below for more info.
+      - `members` (*object*) – Object with two fields as names and roles. See description below for more info.
+
+      - `names`: List of CouchDB user names
+      - `roles`: List of users roles"
+     [db cfg]
+     (let [response (request-sync {:url (str (:name db) "/_security"), :method :put, :body cfg})]
+       (when  (not= (:status response) 200)
+         (raise "Security object was not set" (:body response))))))
+
+
+(defn info
+  "Get information about the database"
+  [db]
+  (with-couch-op :couch/info
+    #?(:clj  (request {:method :get, :url (:name db)})
+       :cljs (.info db))))
+
+
+(defn destroy
+  "Delete the database"
+  [db]
+  (with-couch-op :couch/destroy
+    #?(:clj  (request {:method :delete, :url (:name db)})
+       :cljs (.destroy db))))
+
+
+(defn insert
+  "Create a new document or update an existing document.
+   If the document already exists, you must specify its revision `_rev`, otherwise a conflict will occur.
+   If `params` is a string, it's assumed it is the intended document `_id`.
+   If `params` is an object, it's passed as query string parameters and `doc` is checked for defining the document `_id`
+   If the `_id` field is not specified, a new unique ID will be generated, following whatever UUID algorithm is configured for that server.
+
+   Params:
+   - `rev` (*string*) – Document’s revision if updating an existing document. Alternative to `If-Match` header or document key. *Optional*
+   - `batch` (*string*) – Stores document in [batch mode](https://docs.couchdb.org/en/stable/api/document/common.html#batch-mode-writes).
+      Possible values: `ok`. *Optional*
+   - `new-edits` (*boolean*) – Prevents insertion of a [conflicting document](https://docs.couchdb.org/en/stable/replication/conflicts.html).
+      Possible values: `true` (default) and `false`.
+      If `false`, a well-formed `_rev` must be included in the document.
+     `new-edits=false` is used by the replicator to insert documents into the target database even if that leads to the creation of conflicts.
+     *Optional. The `false` value is intended for use only by the replicator.*
+
+   Returns:
+   - `id` (*string*) - Document ID
+   - `ok` (*boolean*) – Operation status
+   - `rev` (*string*) – Revision info"
+  ([db doc]
+   (insert db doc {}))
+  ([db doc params]
+   (let [docid  (if (string? params) params (:_id doc))
+         params (if (string? params) {} params)]
+     (with-couch-op :couch/insert
+       (if docid
+         #?(:clj  (request {:method :put, :url (str (:name db) "/" docid), :body (assoc doc :_id docid), :query-params (clj->couch params)})
+            :cljs (.put db (clj->couch (assoc doc :_id docid)) (clj->couch params)))
+         #?(:clj  (request {:method :post, :url (:name db), :body doc, :query-params (clj->couch params)})
+            :cljs (.post db (clj->couch doc) (clj->couch params))))))))
+
+
+(defn get
+  "Gets a document whose `_id` is `docname`
+   Params:
+   - `attachments` (*boolean*) – Includes attachments bodies in response. Default is `false`
+   - `att-encoding-info` (*boolean*) – Includes encoding information in attachment stubs if the particular attachment is compressed. Default is `false`.
+   - `atts-since` (*array*) – Includes attachments only since specified revisions. Doesn’t include attachments for specified revisions. *Optional*
+   - `conflicts` (*boolean*) – Includes information about conflicts in document. Default is `false`
+   - `deleted-conflicts` (*boolean*) – Includes information about deleted conflicted revisions. Default is `false`
+   - `latest` (*boolean*) – Forces retrieving latest 'leaf' revision, no matter what `rev` was requested. Default is `false`
+   - `local-seq` (*boolean*) – Includes last update sequence for the document. Default is `false`
+   - `meta` (*boolean*) – Acts same as specifying all `conflicts`, `deleted-conflicts`, and `revs-info` query parameters. Default is `false`
+   - `open-revs` (*array*) – Retrieves documents of specified leaf revisions. Additionally, it accepts value as `all` to return all leaf revisions. *Optional*
+   - `rev` (*string*) – Retrieves document of specified revision. *Optional*
+   - `revs` (*boolean*) – Includes list of all known document revisions. Default is `false`
+   - `revs-info` (*boolean*) – Includes detailed information for all known document revisions. Default is `false`.
+
+   Returns:
+   - `_id` (*string*) – Document ID.
+   - `_rev` (*string*) – Revision MVCC token.
+   - `_deleted` (*boolean*) – Deletion flag; present if the document was removed.
+   - `_attachments` (*object*) – Attachment stubs; present if the document has attachments.
+   - `_conflicts` (*array*) – List of conflicted revisions; present when `conflicts=true`.
+   - `_deleted_conflicts` (*array*) – List of deleted conflicted revisions; present when `deleted_conflicts=true`.
+   - `_local_seq` (*string*) – Document’s update sequence in the current database; present when `local_seq=true`.
+   - `_revs_info` (*array*) – Objects with information about local revisions and their status; present when `open_revs` is used.
+   - `_revisions` (*object*) – List of local revision tokens; present when `revs=true`. "
+  ([db docname]
+   (get db docname {}))
+  ([db docname params]
+   (with-couch-op :couch/get
+     #?(:clj  (request {:method :get, :url (str (:name db) "/" docname), :query-params (clj->couch params)})
+        :cljs (.get db docname (clj->couch params))))))
+
+
+(defn find
+  "Find documents using a declarative JSON querying syntax.
+
+   Query:
+   - `selector` (*object*) – JSON object describing criteria used to select documents. More information provided in the section on selector syntax. Required
+   - `limit` (*number*) – Maximum number of results returned. Default is 25. *Optional*
+   - `skip` (*number*) – Skip the first 'n' results, where 'n' is the value specified. *Optional*
+   - `sort` (*array*) – JSON array following sort syntax. *Optional*
+   - `fields` (*array*) – JSON array specifying which fields of each object should be returned.
+     If it is omitted, the entire object is returned. More information provided in the section on filtering fields. *Optional*
+   - `use-index` (*string*|*array*) – Request a query to use a specific index.
+     Specified either as `'<design_document>'`  or [`'<design_document>'`, `'<index_name>'`].
+     It is not guaranteed that the index will be actually used because if the index is not valid for the selector, fallback to a valid index is attempted.
+     Therefore that is more like a hint. When fallback occurs, the details are given in the `warning` field of the response. *Optional*
+   - `allow-fallback` (*boolean*) – Tell if it is allowed to fall back to another valid index.
+     This can happen on running a query with an index specified by `use-index` which is not deemed usable,
+     or when only the built-in `_all_docs` index would be picked in lack of indexes available to support the query.
+     Disabling this fallback logic causes the endpoint immediately return an error in such cases. Default is `true`. *Optional*
+   - `conflicts` (*boolean*) – Include conflicted documents if true.
+     Intended use is to easily find conflicted documents, without an index or view. Default is `false`. *Optional*
+   - `r` (*number*) – Read quorum needed for the result.
+     This defaults to 1, in which case the document found in the index is returned.
+     If set to a higher value, each document is read from at least that many replicas before it is returned in the results.
+     This is likely to take more time than using only the document stored locally with the index. *Optional*, default: 1
+   - `bookmark` (*string*) – A string that enables you to specify which page of results you require. Used for paging through result sets.
+     Every query returns an opaque string under the `bookmark` key that can then be passed back in a query to get the next page of results.
+     If any part of the selector query changes between requests, the results are undefined. *Optional*, default: null
+   - `update` (*boolean*) – Whether to update the index prior to returning the result. Default is `true`. *Optional*
+   - `stable` (*boolean*) – Whether or not the view results should be returned from a “stable” set of shards. *Optional*
+   - `stale` (*string*) – Combination of `update=false` and `stable=true` options. Possible options: `'ok'`, `false` (default). *Optional*.
+     Note that this parameter is deprecated. Use `stable` and `update` instead. See Views Generation for more details.
+   - `execution-stats` (*boolean*) – Include execution statistics in the query response. *Optional*, default: `false`
+
+   Returns:
+   - `docs` (*object*) – Array of documents matching the search.
+      In each matching document, the fields specified in the fields part of the request body are listed, along with their values.
+   - `warning` (*string*) – Execution warnings.
+   - `execution-stats` (*object*) – Execution statistics.
+   - `bookmark` (*string*) – An opaque string used for paging. See the bookmark field in the request (above) for usage details."
+  [db query]
+  (with-couch-op :couch/find
+    #?(:clj  (request {:method :get, :url (str (:name db) "/_find"), :body (clj->couch query)})
+       :cljs (.find db (clj->couch query)))))
+
+
+(defn remove
+  "Marks the specified document as deleted by adding a field `_deleted` with the value true.
+
+   Params:
+   - `rev` (*string*) - Actual document's revision
+
+   Returns:
+   - `id` (*string*) – Document ID
+   - `ok` (*boolean*) – Operation status
+   - `rev` (*string*) – Revision token"
+  ([db doc]
+   (remove db doc nil {}))
+  ([db doc params]
+   (remove db doc nil params))
+  ([db doc rev params]
+   (let [rev (or (:_rev doc) (:rev params) rev)]
+     (with-couch-op :couch/remove
+       #?(:clj  (request {:method :delete, :url (str (:name db) "/" (:_id doc)), :query-params {:rev rev}})
+          :cljs (.remove db (clj->couch (assoc doc :_rev rev))))))))
+
+
+(defn all-docs
+  "Fetch multiple documents, indexed and sorted by the `_id`."
+  [db]
+  (with-couch-op :couch/all-docs
+    #?(:clj  (p/rejected "not implemented yet")
+       :cljs (.allDocs db))))
+
+
+(defn bulk-docs
+  "Create, update or delete multiple documents. The `docs` argument is an array of documents.
+
+  If you omit an `_id` parameter on a given document, the database will create a new document and assign the ID for you.
+  To update a document, you must include both an `_id` parameter and a `_rev` parameter,
+  which should match the ID and revision of the document on which to base your updates.
+  Finally, to delete a document, include a `_deleted` parameter with the value true."
+  [db docs]
+  (with-couch-op :couch/bulk-docs
+   #?(:clj  (p/rejected "not implemented yet")
+      :cljs (.bulkDocs db (clj->couch docs)))))
+
+
+(defn bulk-delete
+  "Delete each document `_id`/`_rev` combination within the submitted structure `docs` structures."
+  [db docs]
+  (let [docs (map #(assoc % :_deleted true) docs)]
+   (bulk-docs db docs)))
+
+
+(defn purge
+  "Purges a specific revision of a document, specified by `doc-id` and `rev`. `rev` must be a leaf revision."
+  [db doc-id rev]
+  (with-couch-op :couch/purge
+    #?(:clj  (p/rejected "not implemented yet")
+       :cljs (.purge db doc-id rev))))
+
+
+#?(:cljs
+   (defn sync
+     [db]
+     (let [dbname (.-name db)]
+       (PouchDB/sync (.-name db) (str (.. js/globalThis -location -origin) "/db/" dbname)))))
+
+
+(comment
+
+  #?(:cljs
+     (require '[cljs.pprint :refer [pprint]]))
+
+  (def user-1-db (use "userdb-1"))
+  (def test-clients (use "clients"))
+
+  #?(:cljs
+     (p/catch
+      (p/-> (.createIndex (use "userdb-1")  (clj->js {:index {:fields ["type"]}})) pprint)
+      pprint))
+
+  #?(:cljs
+     (p/-> (all-docs (use "userdb-1")) pprint))
+
+  #?(:cljs
+     (p/-> (.find (use "userdb-1") (clj->js {:selector {:type "vocab"}})) pprint))
+
+  #?(:cljs
+     (p/-> (insert
+            (use "app-db")
+            {:type "vocab"
+             :value "der Hund"
+             :translation [{:lang "ru", :value "пёс"}]})
+           pprint))
+
+  #?(:cljs
+     (p/catch
+      (p/let [clients-info (info test-clients)]
+        (prn clients-info))
+      (fn [e] (js/console.error "Bulk operation error" e))))
+
+  #?(:cljs
+     (p/let [clients-docs (all-docs test-clients)]
+       (pprint clients-docs)))
+
+  #?(:cljs
+     (p/let [user-data (get test-clients "user-data")]
+       (pprint user-data)))
+
+  #?(:cljs
+     (p/do
+       ;; (insert user-1-db {:test "Hello, world"} "my-third-doc")
+       (p/let [doc (get user-1-db "my-third-doc" {})]
+         (prn doc))))
+
+  (sync user-1-db))
