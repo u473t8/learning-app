@@ -1,14 +1,16 @@
 (ns db
   (:refer-clojure :exclude [find get remove use])
+  #?(:cljs (:require-macros [db :refer [with-couch-op]]))
   (:require
    #?(:clj [cheshire.core :as cheshire])
    #?(:clj [clojure.core :as clojure])
+   #?(:clj [clojure.walk :as walk])
    #?(:clj [org.httpkit.client :as client])
    #?(:clj [taoensso.telemere :as telemere])
-   #?(:clj [clojure.walk :as walk])
-   #?(:cljs ["pouchdb" :as PouchDB])
    #?(:cljs [lambdaisland.glogi :as log])
+   #?(:cljs ["pouchdb" :as PouchDB])
    #?(:cljs ["pouchdb-find" :as PouchFind])
+   #?(:cljs [taoensso.telemere]) ; cljs build fails without this dependensy, I don't understand why
    [clojure.string :as str]
    [promesa.core :as p]))
 
