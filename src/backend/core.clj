@@ -1,6 +1,7 @@
 (ns core
   (:gen-class)
   (:require
+   [application]
    [buddy.hashers :as hashers]
    [cheshire.core :as cheshire]
    [clojure.string :as str]
@@ -14,16 +15,19 @@
    [next.jdbc.prepare :as prepare]
    [next.jdbc.protocols :as p]
    [next.jdbc.result-set :as result-set]
-   [org.httpkit.client :as client]
    [org.httpkit.server :as server]
+   [reitit.http :as http]
+   [reitit.http.interceptors.keyword-parameters :as keyword-parameters]
+   [reitit.http.interceptors.parameters :as parameters]
+   [reitit.interceptor.sieppari :as sieppari]
    [reitit.ring :as ring]
-   [reitit.ring.middleware.dev :as middleware.dev]
+   [ring.middleware.keyword-params :as middleware.keyword-params]
+   [ring.middleware.params :as middleware.params]
    [ring.middleware.session :as session]
    [ring.middleware.session.store :as session.store]
-   [ring.middleware.reload :as reload]
    [ring.util.response :as response]
    [taoensso.telemere :as telemere]
-   [utils])
+   [utils :as utils])
   (:import
    [java.sql PreparedStatement ResultSetMetaData]
    [java.util HexFormat]
@@ -38,15 +42,6 @@
 
 (def port 8083)
 
-;;
-;; Examples Generator
-;;
-
-(defn open-ai-service-account-api-key
-  []
-  (System/getenv "OPEN_AI_KEY"))
-
-
 (def dev-mode? (or (System/getenv "LEARNING_APP__ENVIRONMENT") true))
 
 (def db-auth-secret
@@ -55,106 +50,12 @@
     (System/getenv "LEARNING_APP_DB_AUTH_SECRET")))
 
 
-(def system-prompt
-  "Process JSON requests containing German words array [\"word1\", \"word2\", ...] and return a JSON object where:
-- Each key is a German word
-   - Each value is an object with \"value\", \"translation\", \"structure\" keys
-   - \"value\" contains a German sentence using the word with an appropriate grammatical form:
-     * Nouns: Use cases (Nominativ/Genitiv/Dativ/Akkusativ) or number.
-     * Verbs: Use tenses (Präsens/Präteritum/Imperativ/Konjunktiv/etc.), ensuring that if the input verb is provided without a separable prefix, only its inflected forms without any detachable prefix are used. Conversely, if the input verb includes a detachable prefix, all verb forms in the generated sentence must retain that prefix.
-     * Adjectives: Use proper declensions.
-   Generated sentences should align with language proficiency levels from A1 to C2, incorporating diverse grammatical structures (e.g., conditional clauses, subjunctive mood, etc.) as well as idioms, set phrases, and fixed expressions.
-   The sentences should adhere to standard written and spoken German.
-   - \"translation\" contains the Russian translation of the sentence.
-   - \"structure\" is a list of pairs, where each pair consists of a word from the sentence in its used form, its dictionary form and its russian translation as it is used in the sentence. There should be a pair for each word in the sentence. Exclude pairs for funtction words, pronouns, particles, and prepositions. Exclude pronouns, articles, particles and prepositions from structure. Structure should include only nouns, verbs, adjectives and adverbs. For a noun the 'dictionaryForm' should include an article, e.g [{'usedForm': 'hund', 'dictionaryForm': 'der Hund', 'translation': 'пёс' }]. If a word in the sentence is a verb with separated prefix (and the prefix is actually separeted), the dictionary form of the whole verb should be provided both for separated prefix and root part of the verb, e.g [{'usedForm': 'komme', 'dictionaryForm': 'ankommen', 'translation': 'прибывать'}, {'usedForm': 'an', 'dictionaryForm': 'ankommen', 'translation': 'прибывать'}].Ensure that every noun, verb (including each separated prefix as its own entry with the same dictionary form as the full verb), adjective, and adverb is included in the 'structure' array. Do not skip any eligible word even if it appears only once.
-Return only the JSON object without additional text.")
-
-
-(defn gen-words-api-request
-  [words]
-  (client/request
-   {:url "https://api.openai.com/v1/chat/completions"
-    :method :post
-    :headers {"Authorization" (str "Bearer " (open-ai-service-account-api-key))
-              "Content-Type" "application/json"}
-    :body (cheshire/generate-string
-           {:model "gpt-4.1-2025-04-14" #_"gpt-4o-mini"
-            :messages [{:role "system"
-                        :content system-prompt}
-                       {:role "user"
-                        :content (str "Generate for input words " (cheshire/generate-string words))}]
-            :response_format {:type "json_schema"
-                              :json_schema {:name "sentence_examples"
-                                            :schema {:type "object"
-                                                     :properties (into
-                                                                  {}
-                                                                  (for [word words]
-                                                                    [word
-                                                                     {:type "object"
-                                                                      :properties {"value" {:type "string"
-                                                                                            :description "A German sentence using the word."}
-                                                                                   "translation" {:type "string"
-                                                                                                  :description "Russian translation of the sentence."}
-                                                                                   "structure" {:type  "array",
-                                                                                                :description  "A list of triplets containing the used word form, its dictionary form and its translation."
-                                                                                                :items {:type "object",
-                                                                                                        :properties  {:usedForm  {:type  "string",
-                                                                                                                                  :description  "The word in its used form."},
-                                                                                                                      :dictionaryForm  {:type  "string",
-                                                                                                                                        :description  "The dictionary form of the word."}
-                                                                                                                      :translation {:type  "string",
-                                                                                                                                    :description  "The dictionary form of the word."}}
-                                                                                                        :additionalProperties false
-                                                                                                        :required  ["usedForm", "dictionaryForm", "translation"]}}}
-
-                                                                      :additionalProperties false
-                                                                      :required ["value" "translation" "structure"]}]))
-                                                     :additionalProperties false
-                                                     :required words}
-                                            :strict true}}
-            :top_p 1})}))
-
-
-
-(defn generate-examples
-  "Returns a map from words to maps:
-  * `:value` — German text;
-  * `:translation` — Russian translation;
-  * `:structure` — a list of pairs, where each pair has:
-    * `:dictionaryForm` — the dictionary form of the word;
-    * `:usedForm` — the form of the word used in the sentence."
-  [words]
-  (let [response @(gen-words-api-request words)]
-    ;; I am not converting keys of message content to keywords, as the upper level keys may contain spaces, e.g 'der Hund'.
-    (-> response :body (cheshire/parse-string true) :choices first :message :content cheshire/parse-string)))
-
-
-(defn generate-example
-  "Returns a hash map with the following keys:
-  * `:value` — German text;
-  * `:translation` — Russian translation;
-  * `:structure` — a list of pairs, where each pair has:
-    * `:dictionaryForm` — the dictionary form of the word;
-    * `:usedForm` — the form of the word used in the sentence;
-    * `:translation`— russian translation of the word used in the sentence."
-  [word]
-  (-> [word] generate-examples vals first))
-
-
-(comment
-  (generate-example "das Entsetzen"))
-
-
-
 ;;
 ;; DB
 ;;
 
 (def db-spec
   {:dbtype "sqlite", :dbname "app.db"})
-
-
-
 
 
 (defmacro on-connection
@@ -217,9 +118,11 @@ Return only the JSON object without additional text.")
 
  (defn user-id
   [db user-name password]
-  (let [user (jdbc/execute-one! db ["SELECT id, password FROM users WHERE name = ?" user-name])]
-    (when (:valid (hashers/verify password (:password user)))
-      (:id user))))
+  (when (and (utils/non-blank user-name)
+             (utils/non-blank password))
+    (let [user (jdbc/execute-one! db ["SELECT id, password FROM users WHERE name = ?" user-name])]
+      (when (:valid (hashers/verify password (:password user)))
+        (:id user)))))
 
 
 (defn add-user
@@ -260,7 +163,7 @@ Return only the JSON object without additional text.")
 (defn add-example!
   [db word-id]
   (let [word-value (:value (jdbc/execute-one! db ["SELECT value FROM words WHERE id = ?" word-id]))
-        example (generate-example word-value)]
+        example {}#_(generate-example word-value)]
     (jdbc/execute!
      db (sql/format
          {:insert-into :examples
@@ -275,7 +178,7 @@ Return only the JSON object without additional text.")
                       db (sql/format {:select [:id, :value]
                                       :from :words
                                       :where [:in :id word-ids]}))
-        new-examples (generate-examples (map :value words))]
+        new-examples [{}]#_(generate-examples (map :value words))]
 
     (jdbc/execute!
      db (sql/format
@@ -570,7 +473,7 @@ Return only the JSON object without additional text.")
 ;; Pages
 ;;
 
-(defn page
+(defn login-page
   [{:html/keys [head body]}]
   [:html
    [:head
@@ -578,6 +481,8 @@ Return only the JSON object without additional text.")
     [:meta {:name "viewport" :content "width=device-width, initial-scale=1, interactive-widget=resizes-content"}]
     [:title "Sprecha"]
     [:link {:rel "icon" :href "/favicon.ico"}]
+    [:link {:rel "stylesheet" :href "/css/styles.css"}]
+    [:script {:src "/js/htmx/htmx.min.js"}]
     head]
    [:body
     body]])
@@ -860,12 +765,6 @@ Return only the JSON object without additional text.")
       (handler request))))
 
 
-(defn service-worker-handler
-  [request]
-  (when (-> request :uri (= "/js/app/sw.js"))
-    (-> (response/resource-response "public/js/app/sw.js")
-        (response/content-type "text/javascript")
-        (response/header "Service-Worker-Allowed" "/"))))
 (defn hmac-sign
   [^String user-name ^String secret]
   (.formatHex
@@ -896,14 +795,14 @@ Return only the JSON object without additional text.")
 
    ;; Default handler
    (hiccup/wrap-render
-    (fn [_]
-      {:html/layout layout/page
-
-       :html/body
-       [:div#app
-        {:hx-get "/home"
-         :hx-trigger "controlled"
-         :hx-push-url "true"}]}))
+    (fn [{:keys [session] :as _request}]
+      (when (seq session)
+        {:html/layout layout/page
+         :html/head   [:meta {:name "user-id" :content (:user-id session)}]
+         :html/body   [:div#app
+                       {:hx-get "/home"
+                        :hx-trigger "controlled"
+                        :hx-push-url "true"}]})))
 
    {:middleware
     [wrap-db-connection
@@ -914,20 +813,29 @@ Return only the JSON object without additional text.")
   (ring/ring-handler
    ;; Main handler
    (ring/router
-    [["/login"
+    [["/auth/check"
+      {:get
+       (fn [{:keys [session] :as _request}]
+         (if (seq session)
+           (let [user-name  (-> session :user-id str)
+                 user-roles [(str "u:" user-name)]
+                 token      (hmac-sign user-name db-auth-secret)]
+            ;; https://docs.couchdb.org/en/stable/api/server/authn.html#proxy-authentication
+             (-> {:status 200}
+                 (response/header "X-Auth-UserName" user-name)
+                 (response/header "X-Auth-Roles" (str/join "," user-roles))
+                 (response/header "X-Auth-Token" token)))
+           {:status 401}))}]
+     ["/login"
       {:get
        (fn [_]
-         {:html/layout page
-
-          :html/head
-          [:link {:rel "stylesheet" :href "/css/styles.css"}]
+         {:html/layout login-page
 
           :html/body
           [:div.login-page
            [:form.login-page__form
-            {:hx-post "/login"
-             :hx-indicator "#loader"
-             :hx-swap "none"}
+            {:action "/login"
+             :method "post"}
             [:h1.login-page__header
              "Вход"]
             [:div.login-page__input.input
@@ -957,18 +865,21 @@ Return only the JSON object without additional text.")
               "ВХОД"]]]]})
 
        :post
-       (fn submit-login
-         [{:keys [db params]}]
-         (let [{:keys [user password]} params]
-           (if-let [user-id (user-id db user password)]
-             (-> (response/redirect "/" :see-other)
-                 (assoc :session {:user-id user-id}))
-             (response/bad-request "Невернoе имя пользователя или пароль"))))}]]
+       {:middleware
+        [middleware.params/wrap-params
+         middleware.keyword-params/wrap-keyword-params
+         wrap-db-connection
+         wrap-session]
+        :handler
+        (fn submit-login
+          [{:keys [db params]}]
+          (let [{:keys [user password]} params]
+            (if-let [user-id (user-id db user password)]
+              (-> (response/redirect "/")
+                  (assoc :session {:user-id user-id}))
+              (response/bad-request "Невернoе имя пользователя или пароль"))))}}]]
 
-    {:reitit.middleware/transform
-     middleware.dev/print-request-diffs
-
-     :data
+    {:data
      {:middleware
       [hiccup/wrap-render]}})
 
@@ -976,19 +887,190 @@ Return only the JSON object without additional text.")
    (constantly (response/redirect "/login"))))
 
 
-(def ring-handler
+(defn service-worker-handler
+  [request]
+  (when (-> request :uri (= "/js/app/sw.js"))
+    (-> (response/resource-response "public/js/app/sw.js")
+        (response/content-type "text/javascript")
+        (response/header "Service-Worker-Allowed" "/"))))
+
+
+(def resource-routes
+  (ring/create-resource-handler
+   {:path        "/"
+    ;; Explicitly instruct handler not to serve any index files.
+    ;; Without this, the handler may serve any index.html it finds on the classpath,
+    ;; as happened once with the Datahike library.
+    :index-files []}))
+
+
+(def ring-handler*
   #(ring/routes
     service-worker-handler
-    (ring/create-resource-handler {:path "/"})
+    resource-routes
     protected-routes
     public-routes))
 
 
+(defn wrap-session
+  "Wrap the handler to add a `:session` value to the request if it contains a valid user cookie.
+
+   The session is a map with the following keys:
+   - `:user-id` (string) — ID of the authenticated user."
+  [handler]
+  (fn [request]
+    (let [db (:db request)
+          handler (session/wrap-session handler {:store (->Sessions db)})]
+      (handler request))))
+
+
+(def session-interceptor
+  {:name  ::session-interceptor
+   :enter (fn [ctx]
+            (on-connection [db db-spec]
+                           (let [opts {:store        (->Sessions db)
+                                       :set-cookies? true
+                                       :cookie-name  "ring-session"
+                                       :cookie-attrs {:path "/", :http-only true}}]
+                             (update ctx :request session/session-request opts))))
+   :leave (fn [ctx]
+            (on-connection [db db-spec]
+                           (let [opts {:store        (->Sessions db)
+                                       :set-cookies? true
+                                       :cookie-name  "ring-session"
+                                       :cookie-attrs {:path "/", :http-only true}}]
+                             #d/dbg (:response ctx)
+                             (update ctx :response session/session-response (:request ctx) opts))))})
+
+
+(def login-interceptor
+  {:name  ::login-interceptor
+   :enter (fn [ctx]
+            (on-connection [db db-spec]
+              (let [{:keys [user password]} (-> ctx :request :params)
+                    user-id (user-id db user password)]
+                (assoc-in ctx [:request :user-id] user-id))))})
+
+
+(def login-redirect-interceptor
+  {:name  ::login-redirect-interceptor
+   :enter (fn [ctx]
+            (let [session (-> ctx :request :session)]
+              (cond-> ctx
+                (empty? session) (assoc :queue [], :response (response/redirect "/login")))))})
+
+
+(def root-redirect-interceptor
+  {:name  ::root-redirect-interceptor
+   :enter (fn [ctx]
+            (let [session (-> ctx :request :session)]
+              (cond-> ctx
+                (seq session) (assoc :queue [], :response (response/redirect "/")))))})
+
+
+(def app-routes
+  (http/ring-handler
+   ;; Main handler
+   (http/router
+    ;;  Protected routes
+    [(into
+      [""
+       {:interceptors [login-redirect-interceptor]}
+       ["/"
+        {:get {:handler (fn [request]
+                          (let [user-id (-> request :session :user-id)]
+                            {:html/layout layout/page
+                             :html/head   [:meta {:name "user-id" :content user-id}]
+                             :html/body   [:div#app
+                                           {:hx-get      "/home"
+                                            :hx-trigger  "controlled"
+                                            :hx-on:controlled "console.log(event, 'controlled')"
+                                            :hx-push-url "true"}]
+                             :status      200}))}}]
+       ["/js/app/sw.js"
+        {:get {:handler (fn [_]
+                          (-> (response/resource-response "public/js/app/sw.js")
+                              (response/content-type "text/javascript")
+                              (response/header "Service-Worker-Allowed" "/")))}}]
+       ["/auth/check"
+        {:get
+         (fn [{:keys [session] :as _request}]
+           (if (seq session)
+             (let [user-name  (-> session :user-id str)
+                   user-roles [(str "u:" user-name)]
+                   token      (hmac-sign user-name db-auth-secret)]
+               ;; https://docs.couchdb.org/en/stable/api/server/authn.html#proxy-authentication
+               (-> {:status 200}
+                   (response/header "X-Auth-UserName" user-name)
+                   (response/header "X-Auth-Roles" (str/join "," user-roles))
+                   (response/header "X-Auth-Token" token)))
+             {:status 401}))}]]
+      application/xxx)
+     ;; Public Routes
+     ["/login"
+      {:interceptors [root-redirect-interceptor]
+
+       :get {:handler (fn [_]
+                        {:html/layout login-page
+                         :html/body [:div.login-page
+                                     [:form.login-page__form
+                                      {:action "/login"
+                                       :method "post"}
+                                      [:h1.login-page__header
+                                       "Вход"]
+                                      [:div.login-page__input.input
+                                       [:input.login-page__input.input__input-area
+                                        {:id "email"
+                                         :type "text"
+                                         :autocomplete "email"
+                                         :name "user"
+                                         :placeholder "Email или имя пользователя"}]
+                                       [:button.input__clear-button
+                                        {:hx-on:click "htmx.find('#email').value = ''; htmx.find('#email').focus()"}
+                                        #_icons/cancel]]
+                                      [:div.login-page__input.input
+                                       [:input.input__input-area
+                                        {:id "password"
+                                         :type "password"
+                                         :autocomplete "current-password"
+                                         :name "password"
+                                         :placeholder "Пароль"}]]
+                                      [:div.login-page__error-message
+                                       {:id "error-message"}]
+                                      [:button.big-button.blue-button
+                                       {:type "submit"}
+                                       [:div.big-button__loader.htmx-indicator
+                                        {:id "loader"}]
+                                       [:span.big-button__label
+                                        "ВХОД"]]]]})}
+
+       :post {:interceptors [login-interceptor]
+              :handler (fn [{:keys [user-id]}]
+                         (if user-id
+                           (-> (response/redirect "/" :see-other)
+                               (assoc :session {:user-id user-id}))
+                           (response/bad-request "Невернoе имя пользователя или пароль")))}}]]
+
+    {:data {:interceptors [session-interceptor
+                           (parameters/parameters-interceptor)
+                           (keyword-parameters/keyword-parameters-interceptor)
+                           (hiccup/interceptor {:layout-fn nil})]}})
+
+   ;; Default handler
+   (constantly {:status 404, :body ""})
+
+   ;; interceptor queue executor
+   {:executor sieppari/executor}))
+
+
+
+(def ring-handler
+  #(ring/routes service-worker-handler, resource-routes, app-routes))
+
+
 (def app
   (if dev-mode?
-    (-> #'ring-handler
-        (ring/reloading-ring-handler)
-        (reload/wrap-reload))
+    (ring/reloading-ring-handler #'ring-handler)
     (ring-handler)))
 
 
@@ -1025,4 +1107,6 @@ Return only the JSON object without additional text.")
 
 
 (comment
-)
+  ;; Clear sessions
+  (on-connection [db db-spec]
+    (jdbc/execute! db (sql/format {:delete-from :sessions}))))
