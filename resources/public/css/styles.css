@@ -1281,6 +1281,7 @@ Home Page
     font-weight: 700;
     margin: 0 0 10px;
     padding: 0;
+    width: 100%;
 }
 
 .word-item__translation {
