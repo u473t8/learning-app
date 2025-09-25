@@ -1,8 +1,11 @@
 (ns utils
   (:require
-   [clojure.string :as str]
    #?(:clj
-      [ring.util.codec :as codec])))
+      [ring.util.codec :as codec])
+   [clojure.string :as str])
+  #?(:clj
+     (:import
+      [java.time Instant])))
 
 
 (defn build-url
@@ -38,10 +41,11 @@
 
 
 (defn sanitize-text
+  "Remove extra spaces"
   [text]
   (-> text
       (or "")
-      (str/replace #"\p{Punct}" " ")
+      ;; (str/replace #"\p{Punct}" " ")
       (str/trim)
       (str/replace #"\s+" " ")))
 
@@ -55,3 +59,48 @@
       (str/replace #"ö" "oe")
       (str/replace #"ü" "ue")
       (str/replace #"ß" "ss")))
+
+
+(defn includes?
+  [word pattern]
+  (let [word    (normalize-german word)
+        pattern (normalize-german pattern)]
+    (str/includes? word pattern)))
+
+
+(defn timestamp:instant->unix
+  [instant]
+  #?(:clj   (.getTime ^java.util.Date instant)
+     :cljs  (.getTime instant)))
+
+
+(defn timestamp:iso->unix
+  [iso]
+  #?(:clj
+     (.getEpochSecond (Instant/parse iso))
+     :cljs
+     (quot (js/Date.parse iso) 1000)))
+
+
+(defn now
+  []
+  #?(:clj  (java.util.Date.)
+     :cljs (js/Date.)))
+
+
+(defn now-iso
+  []
+  #?(:cljs (.toISOString (now))))
+
+
+(defn now-unix
+  []
+  #?(:cljs (quot (js/Date.now) 1000)))
+
+
+(defn non-blank
+  [string]
+  (when-not (str/blank? string)
+    string))
+
+

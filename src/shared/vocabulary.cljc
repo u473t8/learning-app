@@ -2,7 +2,6 @@
   (:require
    [clojure.math :as math]
    [db :as db]
-   [lambdaisland.glogi :as log]
    [promesa.core :as p]
    [utils :as utils]))
 
@@ -18,14 +17,12 @@
         vocab-entry {:type        "vocab",
                      :value       value,
                      :translation [{:lang "ru" :value translation}]}]
-    (log/debug :add-word/vocab-entry vocab-entry)
     (p/let [{:keys [id]} (db/insert db vocab-entry)
             review-entry {:type        "review",
                           :word-id     id
                           :retained    true,
                           :timestamp   (utils/now-iso)
                           :translation [{:lang "ru" :value translation}]}]
-      (log/debug :add-word/review-entry review-entry)
       (db/insert db review-entry)
       id)))
 
@@ -82,7 +79,6 @@
   (p/let [db      (db user-id)
           doc     (db/get db word-id)
           new-doc (assoc doc :value value, :translation [{:lang "ru", :value translation}])]
-    (log/debug :change-word/doc [word-id new-doc])
     (db/insert db new-doc)
     (p/let [{reviews :docs} (db/find db {:selector {:type "review", :word-id word-id}})]
       {:id word-id,
@@ -97,5 +93,4 @@
   [user-id word-id]
   (p/let [db  (db user-id)
           doc (db/get db word-id)]
-    (log/debug :delete-word/doc doc)
     (db/remove db doc)))
