@@ -1,9 +1,19 @@
 (ns application
   (:require
+   [clojure.string :as str]
+   [db :as db]
    [hiccup :as hiccup]
    [layout :as layout]
+   [promesa.core :as p]
+   [reitit.http :as http]
+   [reitit.http.interceptors.parameters :as parameters]
+   [reitit.interceptor.sieppari :as sieppari]
    [reitit.ring :as ring]
+   [vocabulary :as vocabulary]
    [utils :as utils]))
+
+
+(def db (db/use "app-db"))
 
 
 (defn word-list-item
@@ -13,12 +23,12 @@
      {:id item-id
       :hx-on:click "htmx.toggleClass(this, 'word-item--selected')"}
      [:form
-      {:hx-put (str "/words?id=" id)
+      {:hx-put (str "/words?word-id=" id)
        :hx-trigger "change"
        :hx-swap "outerHTML"
        :hx-target (str "#" item-id)}
       [:input.word-item__value
-       {:name "word"
+       {:name "value"
         :autocapitalize "off"
         :autocomplete "off"
         :autocorrect "off"
@@ -82,6 +92,7 @@
    ;; Words list
 
    [:section.home__words.words
+    {:hx-push-url "false"}
     [:form.words__search
      [:div.input
       [:span.input__search-icon]
@@ -97,8 +108,7 @@
      {:style {:width "100%", :margin 0}}]
 
     [:div
-     {:id         "word-list"
-      :hx-get     "/words"
+     {:hx-get     "/words"
       :hx-trigger "load"}]]
 
    [:hr {:style {:width "100%", :margin 0}}]
@@ -107,8 +117,9 @@
    [:form.new-word-form
     {:hx-on:htmx:after-request "if(event.detail.successful) {this.reset(); htmx.find('#new-word-value').focus()}; console.log(event)"
      :hx-post                  "/words"
+     :hx-push-url              "false"
      :hx-swap                  "afterbegin"
-     :hx-target                "#words-list"}
+     :hx-target                "#word-list"}
     [:label.new-word-form__label
      "Новое слово"
      [:input.new-word-form__input
@@ -134,32 +145,163 @@
      "ДОБАВИТЬ"]]])
 
 
-(def routes
-  (ring/ring-handler
-   (ring/router
-    [["/home"
-      {:get
-       (fn [_]
-         {:html/body home
-          :status    200})}]
+(def session-interceptor
+  {:name  ::session-interceptor
+   :enter (fn [ctx]
+            (p/let [{:keys [user-id]} (db/get db "user-data")]
+              (assoc-in ctx [:request :session] {:user-id user-id})))})
+
+
+(def block-non-htmx-interceptor
+  {:name  ::block-non-htmx-interceptor
+   :enter (fn [ctx] ctx)})
+
+
+(def words-interceptor
+  {:name  ::words-interceptor
+   :enter (fn [ctx]
+            (p/let [user-id (-> ctx :request :session :user-id)
+                    words   (vocabulary/words user-id)]
+              (assoc-in ctx [:request :words] words)))})
+
+
+(def add-word-interceptor
+  {:name ::add-word-interceptor
+   :enter (fn [ctx]
+            (p/let [{:keys [value translation]} (-> ctx :request :params)
+                    user-id                     (-> ctx :request :session :user-id)
+
+                    word-id (vocabulary/add-word user-id value translation)]
+              (assoc-in ctx [:request :params :word-id] word-id)))})
+
+
+(def change-word-interceptor
+  {:name ::change-word-interceptor
+   :enter (fn [ctx]
+            (let [{:keys [word-id value translation]} (-> ctx :request :params)
+                  user-id                             (-> ctx :request :session :user-id)]
+              (p/let [word (vocabulary/change-word user-id word-id value translation)]
+                (assoc-in ctx [:request :vocabulary/word] word))))})
+
+
+(def delete-word-interceptor
+  {:name ::delete-word-interceptor
+   :enter (fn [ctx]
+            (let [user-id (-> ctx :request :session :user-id)
+                  word-id (-> ctx :request :params :id)]
+              (p/do
+                (vocabulary/delete-word user-id word-id)
+                ctx)))})
+
+(def xxx
+  [["/home"
+      {:get (fn [{:keys [session]}]
+              {:html/layout layout/page
+               :html/head   [:meta {:name "user-id" :content (:user-id session)}]
+               :html/body   home
+               :status      200})}]
+
      ["/words"
-      {:get
-       (fn [{:keys [pages search]}]
-         {:html/body
-          (word-list
-           {:pages  pages
-            :search search
-            :words
-            [{:id 1 :value "word" :translation "перевод", :retention-level 77}
-             {:id 1 :value "word" :translation "перевод", :retention-level 77}
-             {:id 1 :value "word" :translation "перевод", :retention-level 77}
-             {:id 1 :value "word" :translation "перевод", :retention-level 77}]})
-          :status 200})}]
+      {:interceptors [block-non-htmx-interceptor]
+       :get {:interceptors [words-interceptor]
+             :handler      (fn [{:keys [pages search words headers] :as request}]
+                             (if (headers "hx-request")
+                               {:html/body (word-list {:pages pages, :search search, :words words})
+                                :status    200}
+                               {:status 403}))}
+
+       :post {:interceptors [add-word-interceptor]
+              :handler      (fn [request]
+                              (let [{:keys [value translation word-id]} (:params request)]
+                                (if (or
+                                     (not (string? value)) (str/blank? value)
+                                     (not (string? translation)) (str/blank? translation))
+                                  {:html/body (cond-> (list)
+                                                (or (not (string? value)) (str/blank? value))
+                                                (conj
+                                                 [:input.new-word-form__input.new-word-form__input--error
+                                                  {:hx-on:change "htmx.find('#new-word-translation').focus()"
+                                                   :hx-swap-oob  "true"
+                                                   :id           "new-word-value"
+                                                   :name         "value"}])
+
+                                                (or (not (string? translation)) (str/blank? translation))
+                                                (conj
+                                                 [:input.new-word-form__input.new-word-form__input--error
+                                                  {:id          "new-word-translation"
+                                                   :hx-swap-oob "true"
+                                                   :name        "translation"}]))
+                                   :status 400}
+                                  {:html/body (word-list-item
+                                               {:id              word-id
+                                                :value           value
+                                                :translation     translation
+                                                :retention-level 100})
+                                   :status 200})))}
+
+       :put  {:interceptors [change-word-interceptor]
+              :handler      (fn [request]
+                              (let [{:keys [id value translation retention-level]} (:vocabulary/word request)]
+                                {:status    200
+                                 :html/body (word-list-item
+                                             {:id              id
+                                              :value           value
+                                              :translation     translation
+                                              :retention-level retention-level})}))}
+       :delete {:interceptors [delete-word-interceptor]
+                :handler      (fn [_] {:status 200})}}]
+
      ["/lesson"
-      {:get
-       (fn [_]
-         {:html/body [:h1 "New Lesson"]
-          :status    200})}]]
-    {:data {:middleware  [hiccup/wrap-render]
-            :html/layout layout/page}})
-   (constantly {:status 404, :body ""})))
+      {:get (fn [_]
+              {:html/body [:h1 "New Lesson"]
+               :status    200})}]])
+
+
+(def routes
+  (http/ring-handler
+   (http/router
+    xxx
+
+    ;; {:layout-fn nil} -- explicitly disables default layout
+    {:data {:interceptors [(parameters/parameters-interceptor)
+                           session-interceptor
+                           (hiccup/interceptor {:layout-fn nil})]}})
+
+   ;; the default handler
+   (constantly {:status 404, :body ""})
+
+   ;; interceptor queue executor
+   {:executor sieppari/executor}))
+
+
+
+(comment
+  (require
+   #?(:clj  '[clojure.pprint :as pprint]
+      :cljs '[cljs.pprint :as pprint]))
+
+  (def test-interceptor
+    {:enter
+     (fn [ctx]
+       (p/let [db   (db/use "userdb-1")
+               info (db/info db)]
+         (assoc-in ctx [:request :info] info)))})
+
+  (def test-app
+    (http/ring-handler
+     (http/router
+      ["/"
+       {:get {:interceptors [test-interceptor]
+              :handler (fn [request]
+                         {:status 200
+                          :body (:info request)})}}])
+
+     ;; the default handler
+     (ring/create-default-handler)
+
+     ;; executor
+     {:executor sieppari/executor}))
+
+  (p/let [res (test-app {:request-method :get, :uri "/"})]
+    (pprint/pprint res)))
+
