@@ -5,9 +5,12 @@
   (:require
    [application :as application]
    [clojure.string :as str]
+   [db :as db]
    [lambdaisland.glogi :as log]
    [lambdaisland.glogi.console :as glogi-console]
-   [promesa.core :as p]))
+   [promesa.core :as p]
+   [vocabulary :as vocabulary]
+   [utils :as utils]))
 
 
 (glogi-console/install!)
@@ -36,42 +39,44 @@
 (js/self.addEventListener
  "install"
  (fn [^InstallEvent event]
-   (log/debug :install event)
-   (p/let [cache (js/caches.open "resources")]
-     (.addAll cache precache-url))))
-
-
-(defn full-url
-  [url]
-  (.-href (js/URL. url js/self.location.origin)))
+   (log/debug :event/install event)
+   (js/self.skipWaiting)
+   (..
+    event
+    (waitUntil
+     (p/let [cache (js/caches.open "resources")]
+       (.addAll cache precache-url))))))
 
 
 (js/self.addEventListener
  "activate"
  (fn [event]
-   (log/debug :activate event)
+   (log/debug :event/activate event)
    (..
     event
     (waitUntil
      (js/self.clients.claim)))))
 
 
-(defn wrap-js
-  [handler]
-  (fn [request]
-    (let [url-object (js/URL. (.-url request))
-          ;; https://github.com/ring-clojure/ring/wiki/Concepts#requests
-          ring-request {:server-port    (.-port url-object)
-                        :server-name    (.-hostname url-object)
-                        :uri            (.-pathname url-object)
-                        :url            (.-url request)
-                        :query-string   (.-search url-object)
-                        :sheme          (-> url-object .-protocol (str/replace #":" "") keyword)
-                        :request-method (-> request .-method str/lower-case keyword)
-                        :headers        (.-headers request)
-                        :body           (.-body request)}
-          ring-response (handler ring-request)]
-      (js/console.log ::ring-response ring-response)
+(defn local-routes
+  [request]
+  (let [request    (.clone request)
+        url-object (js/URL. (.-url request))
+        ;; https://github.com/ring-clojure/ring/wiki/Concepts#requests
+        headers      (-> request .-headers .entries js/Object.fromEntries js->clj)
+        ring-request {:server-port    (.-port url-object)
+                      :server-name    (.-hostname url-object)
+                      :uri            (.-pathname url-object)
+                      :url            (.-url request)
+                      :query-string   (utils/non-blank (.-search url-object))
+                      :sheme          (-> url-object .-protocol (str/replace #":" "") keyword)
+                      :request-method (-> request .-method str/lower-case keyword)
+                      :headers        headers
+                      :body           (.-body request)
+
+                      ;; Custom non-ring fields
+                      :js/request     request}]
+    (p/let [ring-response (application/routes ring-request)]
       (when-not (= (:status ring-response) 404)
         ;; https://developer.mozilla.org/en-US/docs/Web/API/Response/Response
         (js/Response.
@@ -83,27 +88,38 @@
 (js/self.addEventListener
  "fetch"
  (fn [^FetchEvent event]
-   (log/debug :fetch-url (.. event -request -url))
+   (log/debug :event/fetch event)
    (..
     event
     (respondWith
-     (p/let [request (.. event -request)
-             match   (js/caches.match request)]
-       (or match ((wrap-js application/routes) request)))))))
+     (p/let [request (.. event -request)]
+       (p/-> (js/caches.match request)
+             (or (local-routes request))
+             (or (js/fetch request))))))))
 
 
 (js/self.addEventListener
  "message"
  (fn [^ExtendableMessageEvent event]
-   (log/debug :message/received ["Received a message from a client" event])
-   (when (= (.. event -data) "claim-client")
-     (log/debug :message/claim-clients "Claim clients")
-     (p/do
-       (js/self.clients.claim)
-       (log/debug :message/claim-clients "Notify sender client")
-       (.. event -source (postMessage #js {:type "controlled"}))))))
+   (log/debug :event/message ["Received a message from a client" event])
+   (case (.. event -data -type)
+     "claim-client"  (p/do
+                       (log/debug :event/message ["Claim clients"])
+                       (js/self.clients.claim)
+                       (log/debug :event/message ["Notify sender client"])
+                       (.. event -source (postMessage #js {:type "page-controlled"})))
+     "register-user" (p/let [user-data (db/get application/db "user-data")
+                             user-id   (.. event -data -value)
+                             client-id (.. event -source -id)]
+                       (log/debug :message/event ["User Data" user-data])
+                       (when (nil? user-data)
+                         (log/debug :event/message ["Register user" user-id])
+                         (db/insert application/db {:user-id user-id} "user-data"))
+                       (log/debug :event/message ["Notify sender client" client-id])
+                       (.. event -source (postMessage #js {:type "user-registered"}))))))
 
 
+#_{:clojure-lsp/ignore [:clojure-lsp/unused-public-var]}
 (defn ^:dev/after-load update-registration []
   (log/debug :dev/after-load "Update service worker")
   (js/self.registration.update))
