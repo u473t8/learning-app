@@ -775,6 +775,24 @@
     (.getBytes user-name))))
 
 
+(defn auth-proxy-response
+  "Produce the `/auth/check` response map expected by the CouchDB proxy.
+
+  When the session is missing, or empty, a `401` response is returned.
+  Otherwise the response includes the proxy auth headers populated from
+  the current `:user-id`."
+  [session]
+  (if (seq session)
+    (let [user-name  (-> session :user-id str)
+          user-roles (str/join "," [(str "u:" user-name)])
+          token      (hmac-sign user-name db-auth-secret)]
+      (-> {:status 200}
+          (response/header "X-Auth-UserName" user-name)
+          (response/header "X-Auth-Roles" user-roles)
+          (response/header "X-Auth-Token" token)))
+    {:status 401}))
+
+
 (def protected-routes
   (ring/ring-handler
    ;; Main handler
@@ -782,16 +800,7 @@
     ["/auth/check"
      {:get
       (fn [{:keys [session] :as _request}]
-        (if (seq session)
-          (let [user-name  (-> session :user-id str)
-                user-roles [(str "u:" user-name)]
-                token      (hmac-sign user-name db-auth-secret)]
-            ;; https://docs.couchdb.org/en/stable/api/server/authn.html#proxy-authentication
-            (-> {:status 200}
-                (response/header "X-Auth-UserName" user-name)
-                (response/header "X-Auth-Roles" (str/join "," user-roles))
-                (response/header "X-Auth-Token" token)))
-          {:status 401}))}])
+        (auth-proxy-response session))}])
 
    ;; Default handler
    (hiccup/wrap-render
@@ -816,16 +825,7 @@
     [["/auth/check"
       {:get
        (fn [{:keys [session] :as _request}]
-         (if (seq session)
-           (let [user-name  (-> session :user-id str)
-                 user-roles [(str "u:" user-name)]
-                 token      (hmac-sign user-name db-auth-secret)]
-            ;; https://docs.couchdb.org/en/stable/api/server/authn.html#proxy-authentication
-             (-> {:status 200}
-                 (response/header "X-Auth-UserName" user-name)
-                 (response/header "X-Auth-Roles" (str/join "," user-roles))
-                 (response/header "X-Auth-Token" token)))
-           {:status 401}))}]
+         (auth-proxy-response session))}]
      ["/login"
       {:get
        (fn [_]
@@ -995,16 +995,7 @@
        ["/auth/check"
         {:get
          (fn [{:keys [session] :as _request}]
-           (if (seq session)
-             (let [user-name  (-> session :user-id str)
-                   user-roles [(str "u:" user-name)]
-                   token      (hmac-sign user-name db-auth-secret)]
-               ;; https://docs.couchdb.org/en/stable/api/server/authn.html#proxy-authentication
-               (-> {:status 200}
-                   (response/header "X-Auth-UserName" user-name)
-                   (response/header "X-Auth-Roles" (str/join "," user-roles))
-                   (response/header "X-Auth-Token" token)))
-             {:status 401}))}]]
+           (auth-proxy-response session))}]]
       application/xxx)
      ;; Public Routes
      ["/login"

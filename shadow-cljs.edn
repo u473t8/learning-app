@@ -16,7 +16,7 @@
   [http-kit/http-kit "2.8.0"]]
 
  :source-paths
- ["src/shared" "src/client" "dev/cljs"]
+ ["src/shared" "src/client" "dev/cljs" "test"]
 
  :nrepl
  {:port 4444
@@ -44,4 +44,10 @@
     :preloads [debux.preloads]
     :watch-dir  "resources/public/css"
     :watch-path "/css"}
-   :release-stubs #{debux.core}}}}
+   :release-stubs #{debux.core}}}
+
+  :test
+  {:target    :node-test
+   :output-to "target/node-tests.js"
+   :autorun   true
+   :ns-regexp "-test$"}}}
