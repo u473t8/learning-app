@@ -996,7 +996,7 @@
         {:get
          (fn [{:keys [session] :as _request}]
            (auth-proxy-response session))}]]
-      application/xxx)
+      application/ui-routes)
      ;; Public Routes
      ["/login"
       {:interceptors [root-redirect-interceptor]

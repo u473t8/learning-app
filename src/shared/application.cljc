@@ -193,7 +193,7 @@
                 (vocabulary/delete-word user-id word-id)
                 ctx)))})
 
-(def xxx
+(def ui-routes
   [["/home"
       {:get (fn [{:keys [session]}]
               {:html/layout layout/page
@@ -252,7 +252,7 @@
                 :handler      (fn [_] {:status 200})}}]
 
      ["/lesson"
-      {:get (fn [_]
+     {:get (fn [_]
               {:html/body [:h1 "New Lesson"]
                :status    200})}]])
 
@@ -260,7 +260,7 @@
 (def routes
   (http/ring-handler
    (http/router
-    xxx
+    ui-routes
 
     ;; {:layout-fn nil} -- explicitly disables default layout
     {:data {:interceptors [(parameters/parameters-interceptor)
@@ -304,4 +304,3 @@
 
   (p/let [res (test-app {:request-method :get, :uri "/"})]
     (pprint/pprint res)))
-
