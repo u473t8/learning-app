@@ -27,6 +27,7 @@
 - Follow `GH-<issue> Short summary` commit messages (e.g., `GH-38 Add vocabulary layer`).
 - Group backend, client, and infra work in separate commits when possible to simplify bisects.
 - PRs should outline intent, schema or config changes, linked issues, screenshots or terminal captures, and the commands you ran.
+- Treat git as read-only during maintenance sessions: use `git status`, `git diff`, or `git log` for inspection only—never stage or commit from this environment.
 
 ## Architecture & Roadmap Notes
 - Backend ChatGPT integration generates example sentences when new words arrive; results persist in CouchDB and replicate to PouchDB.

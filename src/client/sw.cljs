@@ -6,10 +6,14 @@
    [application :as application]
    [clojure.string :as str]
    [db :as db]
+   [hiccup :as hiccup]
    [lambdaisland.glogi :as log]
    [lambdaisland.glogi.console :as glogi-console]
    [promesa.core :as p]
-   [vocabulary :as vocabulary]
+   [reitit.http :as http]
+   [reitit.http.interceptors.keyword-parameters :as keyword-parameters]
+   [reitit.http.interceptors.parameters :as parameters]
+   [reitit.interceptor.sieppari :as sieppari]
    [utils :as utils]))
 
 
@@ -58,6 +62,31 @@
      (js/self.clients.claim)))))
 
 
+(def session-interceptor
+  {:name  ::session-interceptor
+   :enter (fn [ctx]
+            (p/let [{:keys [user-id]} (db/get db "user-data")]
+              (assoc-in ctx [:request :session] {:user-id user-id})))})
+
+
+(def ring-handler
+  (http/ring-handler
+   (http/router
+    application/ui-routes
+
+    ;; {:layout-fn nil} -- explicitly disables default layout
+    {:data {:interceptors [session-interceptor
+                           (parameters/parameters-interceptor)
+                           (keyword-parameters/keyword-parameters-interceptor)
+                           (hiccup/interceptor {:layout-fn nil})]}})
+
+   ;; the default handler
+   (constantly {:status 404, :body ""})
+
+   ;; interceptor queue executor
+   {:executor sieppari/executor}))
+
+
 (defn local-routes
   [request]
   (let [request    (.clone request)
@@ -76,7 +105,7 @@
 
                       ;; Custom non-ring fields
                       :js/request     request}]
-    (p/let [ring-response (application/routes ring-request)]
+    (p/let [ring-response (ring-handler ring-request)]
       (when-not (= (:status ring-response) 404)
         ;; https://developer.mozilla.org/en-US/docs/Web/API/Response/Response
         (js/Response.
