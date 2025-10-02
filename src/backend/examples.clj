@@ -31,46 +31,68 @@ Return only the JSON object without additional text.")
     :method :post
     :headers {"Authorization" (str "Bearer " (open-ai-service-account-api-key))
               "Content-Type" "application/json"}
-    :body (cheshire/generate-string
-           {:model "gpt-4.1-2025-04-14" #_"gpt-4o-mini"
-            :messages [{:role "system"
-                        :content system-prompt}
-                       {:role "user"
-                        :content (str "Generate for input words " (cheshire/generate-string words))}]
-            :response_format {:type "json_schema"
-                              :json_schema {:name "sentence_examples"
-                                            :schema {:type "object"
-                                                     :properties (into
-                                                                  {}
-                                                                  (for [word words]
-                                                                    [word
-                                                                     {:type "object"
-                                                                      :properties {"value" {:type "string"
-                                                                                            :description "A German sentence using the word."}
-                                                                                   "translation" {:type "string"
-                                                                                                  :description "Russian translation of the sentence."}
-                                                                                   "structure" {:type  "array",
-                                                                                                :description  "A list of triplets containing the used word form, its dictionary form and its translation."
-                                                                                                :items {:type "object",
-                                                                                                        :properties  {:usedForm  {:type  "string",
-                                                                                                                                  :description  "The word in its used form."},
-                                                                                                                      :dictionaryForm  {:type  "string",
-                                                                                                                                        :description  "The dictionary form of the word."}
-                                                                                                                      :translation {:type  "string",
-                                                                                                                                    :description  "The dictionary form of the word."}}
-                                                                                                        :additionalProperties false
-                                                                                                        :required  ["usedForm", "dictionaryForm", "translation"]}}}
+    :body
+    (cheshire/generate-string
+     {:model "gpt-4.1-2025-04-14" #_"gpt-4o-mini"
+      :messages [{:role "system"
+                  :content system-prompt}
+                 {:role "user"
+                  :content (str "Generate for input words " (cheshire/generate-string words))}]
 
-                                                                      :additionalProperties false
-                                                                      :required ["value" "translation" "structure"]}]))
-                                                     :additionalProperties false
-                                                     :required words}
-                                            :strict true}}
-            :top_p 1})}))
+      :response_format
+      {:type "json_schema"
+
+       :json_schema
+       {:name "sentence_examples"
+        :schema
+        {:type "object"
+
+         :properties
+         (into
+          {}
+          (for [word words]
+            [word
+             {:type "object"
+              :properties
+              {"value"
+               {:type "string"
+                :description "A German sentence using the word."}
+
+               "translation"
+               {:type "string"
+                :description "Russian translation of the sentence."}
+
+               "structure"
+               {:type  "array",
+                :description  "A list of triplets containing the used word form, its dictionary form and its translation."
+                :items
+                {:type "object",
+                 :properties
+                 {:usedForm
+                  {:type  "string",
+                   :description  "The word in its used form."},
+
+                  :dictionaryForm
+                  {:type  "string",
+                   :description  "The dictionary form of the word."}
+
+                  :translation
+                  {:type  "string",
+                   :description  "The dictionary form of the word."}}
+
+                 :additionalProperties false
+                 :required  ["usedForm", "dictionaryForm", "translation"]}}}
+
+              :additionalProperties false
+              :required ["value" "translation" "structure"]}]))
+         :additionalProperties false
+         :required words}
+        :strict true}}
+      :top_p 1})}))
 
 
 
-(defn- generate-many
+(defn generate-many!
   "Returns a map from words to maps:
   * `:value` — German text;
   * `:translation` — Russian translation;
@@ -83,7 +105,7 @@ Return only the JSON object without additional text.")
     (-> response :body (cheshire/parse-string true) :choices first :message :content cheshire/parse-string)))
 
 
-(defn- generate-one
+(defn generate-one!
   "Returns a hash map with the following keys:
   * `:value` — German text;
   * `:translation` — Russian translation;
@@ -92,16 +114,34 @@ Return only the JSON object without additional text.")
     * `:usedForm` — the form of the word used in the sentence;
     * `:translation`— russian translation of the word used in the sentence."
   [word]
-  (-> [word] generate-many vals first))
+  (-> [word] generate-many! vals first))
 
 
-(defn generate
+(defn generate!
   [input]
   (cond
-    (string? input)     (generate-one input)
-    (sequential? input) (generate-many input)
+    (string? input)     (generate-one! input)
+    (sequential? input) (generate-many! input)
     :else               nil))
 
 
 (comment
-  (generate "das Entsetzen"))
+  (generate! "das Entsetzen"))
+
+
+(defn add-example!
+  [db word-id]
+  (let [word ""
+        example (generate-one! word)]))
+
+
+
+(defn refresh!
+  "Generate new examples for words in `word-ids` list"
+  [db word-ids]
+  (let [words        []
+        new-examples (generate! (map :value words))]))
+
+
+(defn examples
+  [db word-ids])

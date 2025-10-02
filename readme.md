@@ -30,6 +30,14 @@ dpkg-deb --build infra/production learning-app-infra.deb
 
 ## Разработка ##
 
+### Запуск СouchDB сервера ###
+
+TBD
+
+### Запуск Nginx конфигурации, настройка хоста ###
+
+TBD
+
 ### Сборка и запуск сервера ###
 
 ```shell

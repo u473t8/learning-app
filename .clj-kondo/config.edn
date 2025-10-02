@@ -1,6 +1,3 @@
-{:lint-as {core/on-connection clojure.core/with-open
+{:lint-as {jdbc.core/on-connection clojure.core/with-open
            promesa.core/doseq clojure.core/doseq
-           promesa.core/let   clojure.core/let}
-
- ;; Clj-kondo will output the language context for each error in the .cljc file:
- :output  {:langs true}}
+           promesa.core/let   clojure.core/let}}
