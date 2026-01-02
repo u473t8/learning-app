@@ -84,7 +84,8 @@
   [db user-name password]
   (when (and (utils/non-blank user-name)
              (utils/non-blank password))
-    (let [user (jdbc/execute-one! db ["SELECT id, password FROM users WHERE name = ?" user-name])]
+    (let [user (jdbc/execute-one! db ["SELECT id, password FROM users WHERE name = ?" user-name]
+                                  {:builder-fn result-set/as-unqualified-maps})]
       (when (:valid (hashers/verify password (:password user)))
         (:id user)))))
 
@@ -110,7 +111,8 @@
   session.store/SessionStore
   (read-session [_ token]
     (:value
-     (jdbc/execute-one! db ["SELECT value FROM sessions WHERE token = ?" token])))
+     (jdbc/execute-one! db ["SELECT value FROM sessions WHERE token = ?" token]
+                        {:builder-fn result-set/as-unqualified-maps})))
   (write-session [_ token value]
     (let [token (or token (str (random-uuid)))]
       (jdbc/execute! db ["INSERT INTO sessions (token, value) VALUES (?, ?)" token value])
@@ -261,7 +263,8 @@
                                          :name "user"
                                          :placeholder "Email или имя пользователя"}]
                                        [:button.input__clear-button
-                                        {:hx-on:click "htmx.find('#email').value = ''; htmx.find('#email').focus()"}
+                                        {:type "button"
+                                         :hx-on:click "htmx.find('#email').value = ''; htmx.find('#email').focus()"}
                                         #_icons/cancel]]
                                       [:div.login-page__input.input
                                        [:input.input__input-area
@@ -307,8 +310,19 @@
     :index-files []}))
 
 
+(defn wrap-service-worker
+  "Middleware to serve sw.js with Service-Worker-Allowed header"
+  [handler]
+  (fn [request]
+    (if (= (:uri request) "/js/app/sw.js")
+      (-> (response/resource-response "public/js/app/sw.js")
+          (response/content-type "text/javascript")
+          (response/header "Service-Worker-Allowed" "/"))
+      (handler request))))
+
 (def app
-  (let [ring-handler #(ring/routes resource-routes, app-routes)]
+  (let [ring-handler #(-> (ring/routes resource-routes, app-routes)
+                          wrap-service-worker)]
     (if dev-mode?
       (ring/reloading-ring-handler ring-handler)
       (ring-handler))))
