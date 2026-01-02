@@ -28,36 +28,35 @@ dpkg-deb --build infra/production learning-app-infra.deb
 
 ---
 
-## Разработка ##
+## Development
 
-### Запуск СouchDB сервера ###
+See [docs/development-setup.md](docs/development-setup.md) for the complete development setup guide.
 
-TBD
+### Quick Start
 
-### Запуск Nginx конфигурации, настройка хоста ###
+```bash
+# 1. Install dependencies
+npm install
 
-TBD
+# 2. Initialize database
+sqlite3 app.db < initial-setup.sql
 
-### Сборка и запуск сервера ###
+# 3. Start CouchDB
+brew services start couchdb  # macOS
+
+# 4. Start shadow-cljs (terminal 1)
+npx shadow-cljs watch app
+
+# 5. Start backend (terminal 2)
+clj -M:dev -m core
+```
+
+Open http://127.0.0.1:8083/ in browser.
+
+### Production Build
 
 ```shell
 clj -T:build uber
 clj -T:build run
-```
-
-#### Почему не объеденили build и run ####
-
-Чтобы не ждать сборки, если нужно просто запустить.
-
-### Cборка клиента ###
-
-```shell
-npm install
-npx shadow-clj watch :app
-```
-
-В отдельном терминале после того, как shadow-cls сообщит, что Build completed:
-```shell
-ln -s js/sw/main.js sw.js
 ```
 © 2025. Egor Shundeev, Petr Maslov.
