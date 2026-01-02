@@ -17,19 +17,17 @@
 #?(:cljs (.plugin PouchDB PouchFind))
 
 (def conn
-  {:scheme   "http"
-   :host     "localhost"
-   :port     5984
+  {:scheme "http"
+   :host "localhost"
+   :port 5984
    :username "admin"
    :password "3434"})
-
 
 #?(:clj
    (defmacro raise
      [msg map]
      `(throw
        (ex-info ~msg ~map))))
-
 
 (defn couch->clj
   "Recursively transforms CouchDB response into Clojure structure."
@@ -61,15 +59,14 @@
                        :else x)))]
     (f x)))
 
-
 (defn clj->couch
   "Recursively transforms Clojure structure into CouchDB document."
   [x]
   (let [keyfn (fn [k]
                 (str/replace (name k) #"-" "_"))]
-    #?(:clj  (walk/prewalk (fn [x]
-                             (cond-> x
-                               (map? x) (update-keys keyfn))) x)
+    #?(:clj (walk/prewalk (fn [x]
+                            (cond-> x
+                              (map? x) (update-keys keyfn))) x)
        :cljs (when-not (nil? x)
                (cond
                  (keyword? x) (name x)
@@ -83,7 +80,6 @@
                                (.push arr x))
                              arr)
                  :else x)))))
-
 
 #?(:clj
    (defn request-sync
@@ -110,7 +106,6 @@
           (str/includes? (:content-type headers) "application/json")
           (update :body cheshire/parse-string keyword))))))
 
-
 #?(:clj
    (defn request
      "opts:
@@ -128,7 +123,6 @@
             (resolve (:body response))
             (reject response)))))))
 
-
 #?(:clj
    (defn exists?
      "Returns true if database exists.
@@ -138,7 +132,6 @@
      (let [response (request-sync {:method :head, :url dbname})]
        (not= (:status response) 404))))
 
-
 #?(:clj
    (defn create
      [dbname]
@@ -146,7 +139,6 @@
        (case (:status response)
          (201 202) (-> response :body :ok)
          (raise "DB was not created" (:body response))))))
-
 
 (defn use
   "Creates a database or opens an existing one.
@@ -162,15 +154,13 @@
      :cljs
      (PouchDB. dbname)))
 
-
 (defmacro with-couch-op
   [op-id body]
   `(p/catch
     (p/-> ~body couch->clj)
     (fn [error#]
-      #?(:clj  (telemere/log! {:level :error :id ~op-id :data error#})
+      #?(:clj (telemere/log! {:level :error :id ~op-id :data error#})
          :cljs (log/error ~op-id error#)))))
-
 
 #?(:clj
    (defn secure
@@ -184,25 +174,22 @@
       - `roles`: List of users roles"
      [db cfg]
      (let [response (request-sync {:url (str (:name db) "/_security"), :method :put, :body cfg})]
-       (when  (not= (:status response) 200)
+       (when (not= (:status response) 200)
          (raise "Security object was not set" (:body response))))))
-
 
 (defn info
   "Get information about the database"
   [db]
   (with-couch-op :couch/info
-    #?(:clj  (request {:method :get, :url (:name db)})
+    #?(:clj (request {:method :get, :url (:name db)})
        :cljs (.info db))))
-
 
 (defn destroy
   "Delete the database"
   [db]
   (with-couch-op :couch/destroy
-    #?(:clj  (request {:method :delete, :url (:name db)})
+    #?(:clj (request {:method :delete, :url (:name db)})
        :cljs (.destroy db))))
-
 
 (defn insert
   "Create a new document or update an existing document.
@@ -228,15 +215,14 @@
   ([db doc]
    (insert db doc {}))
   ([db doc params]
-   (let [docid  (if (string? params) params (:_id doc))
+   (let [docid (if (string? params) params (:_id doc))
          params (if (string? params) {} params)]
      (with-couch-op :couch/insert
        (if docid
-         #?(:clj  (request {:method :put, :url (str (:name db) "/" docid), :body (assoc doc :_id docid), :query-params (clj->couch params)})
+         #?(:clj (request {:method :put, :url (str (:name db) "/" docid), :body (assoc doc :_id docid), :query-params (clj->couch params)})
             :cljs (.put db (clj->couch (assoc doc :_id docid)) (clj->couch params)))
-         #?(:clj  (request {:method :post, :url (:name db), :body doc, :query-params (clj->couch params)})
+         #?(:clj (request {:method :post, :url (:name db), :body doc, :query-params (clj->couch params)})
             :cljs (.post db (clj->couch doc) (clj->couch params))))))))
-
 
 (defn get
   "Gets a document whose `_id` is `docname`
@@ -268,9 +254,8 @@
    (get db docname {}))
   ([db docname params]
    (with-couch-op :couch/get
-     #?(:clj  (request {:method :get, :url (str (:name db) "/" docname), :query-params (clj->couch params)})
+     #?(:clj (request {:method :get, :url (str (:name db) "/" docname), :query-params (clj->couch params)})
         :cljs (.get db docname (clj->couch params))))))
-
 
 (defn find
   "Find documents using a declarative JSON querying syntax.
@@ -313,9 +298,8 @@
    - `bookmark` (*string*) – An opaque string used for paging. See the bookmark field in the request (above) for usage details."
   [db query]
   (with-couch-op :couch/find
-    #?(:clj  (request {:method :get, :url (str (:name db) "/_find"), :body (clj->couch query)})
+    #?(:clj (request {:method :get, :url (str (:name db) "/_find"), :body (clj->couch query)})
        :cljs (.find db (clj->couch query)))))
-
 
 (defn remove
   "Marks the specified document as deleted by adding a field `_deleted` with the value true.
@@ -334,17 +318,15 @@
   ([db doc rev params]
    (let [rev (or (:_rev doc) (:rev params) rev)]
      (with-couch-op :couch/remove
-       #?(:clj  (request {:method :delete, :url (str (:name db) "/" (:_id doc)), :query-params {:rev rev}})
+       #?(:clj (request {:method :delete, :url (str (:name db) "/" (:_id doc)), :query-params {:rev rev}})
           :cljs (.remove db (clj->couch (assoc doc :_rev rev))))))))
-
 
 (defn all-docs
   "Fetch multiple documents, indexed and sorted by the `_id`."
   [db]
   (with-couch-op :couch/all-docs
-    #?(:clj  (p/rejected "not implemented yet")
+    #?(:clj (p/rejected "not implemented yet")
        :cljs (.allDocs db))))
-
 
 (defn bulk-docs
   "Create, update or delete multiple documents. The `docs` argument is an array of documents.
@@ -355,31 +337,38 @@
   Finally, to delete a document, include a `_deleted` parameter with the value true."
   [db docs]
   (with-couch-op :couch/bulk-docs
-   #?(:clj  (p/rejected "not implemented yet")
-      :cljs (.bulkDocs db (clj->couch docs)))))
-
+    #?(:clj (p/rejected "not implemented yet")
+       :cljs (.bulkDocs db (clj->couch docs)))))
 
 (defn bulk-delete
   "Delete each document `_id`/`_rev` combination within the submitted structure `docs` structures."
   [db docs]
   (let [docs (map #(assoc % :_deleted true) docs)]
-   (bulk-docs db docs)))
-
+    (bulk-docs db docs)))
 
 (defn purge
   "Purges a specific revision of a document, specified by `doc-id` and `rev`. `rev` must be a leaf revision."
   [db doc-id rev]
   (with-couch-op :couch/purge
-    #?(:clj  (p/rejected "not implemented yet")
+    #?(:clj (p/rejected "not implemented yet")
        :cljs (.purge db doc-id rev))))
-
 
 #?(:cljs
    (defn sync
-     [db]
-     (let [dbname (.-name db)]
-       (PouchDB/sync (.-name db) (str (.. js/globalThis -location -origin) "/db/" dbname)))))
-
+     ([db]
+      (sync db {}))
+     ([db {:keys [remote-url live retry backoff-ms]
+           :or {live true retry true backoff-ms 60000}}]
+      (let [dbname (.-name db)
+            remote (or remote-url
+                       (str (.. js/globalThis -location -origin) "/db/" dbname))
+            opts #js {:live live
+                      :retry retry
+                      :back_off_function
+                      (fn [delay]
+                        (let [next (if (zero? delay) 1000 (min backoff-ms (* 2 delay)))]
+                          next))}]
+        (PouchDB/sync (.-name db) remote opts)))))
 
 (comment
 
@@ -391,7 +380,7 @@
 
   #?(:cljs
      (p/catch
-      (p/-> (.createIndex (use "userdb-1")  (clj->js {:index {:fields ["type"]}})) pprint)
+      (p/-> (.createIndex (use "userdb-1") (clj->js {:index {:fields ["type"]}})) pprint)
       pprint))
 
   #?(:cljs
