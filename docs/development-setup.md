@@ -36,12 +36,12 @@ Edit `/opt/homebrew/opt/couchdb/etc/local.ini` and uncomment the admin line in t
 
 ```ini
 [admins]
-admin = mysecretpassword
+admin = 3434
 ```
 
 CouchDB will hash the password on first start.
 
-> **Note:** For production, use a strong password and configure it before deployment.
+> **Note:** The password `3434` matches the default in `src/shared/db.cljc`. For production, use a strong password.
 
 ## Setup Steps
 
@@ -111,10 +111,68 @@ clj -M:dev -e '
 '
 ```
 
+## Local Domain Setup (sprecha.local)
+
+For full functionality including CouchDB sync, set up the local domain with Nginx proxy.
+
+### 1. Install Nginx and mkcert
+
+```bash
+brew install nginx mkcert
+mkcert -install
+```
+
+### 2. Add local domain to hosts
+
+```bash
+sudo sh -c 'echo "127.0.0.1 sprecha.local" >> /etc/hosts'
+```
+
+### 3. Generate SSL certificates
+
+```bash
+mkdir -p certs
+cd certs
+mkcert sprecha.local localhost 127.0.0.1 ::1
+cd -
+```
+
+### 4. Configure CouchDB proxy authentication
+
+```bash
+cp infra/development/opt/couchdb/etc/local.d/00-proxy-auth.ini /opt/homebrew/opt/couchdb/etc/local.d/
+```
+
+Restart CouchDB after copying the config.
+
+### 5. Create Nginx config
+
+```bash
+export NGINX_CERTS_DIR=/Volumes/wip/learning-app/certs
+envsubst '${NGINX_CERTS_DIR}' < infra/development/etc/nginx/sites-available/sprecha.local.template > /opt/homebrew/etc/nginx/servers/sprecha.local.conf
+```
+
+> **Note:** Use `envsubst '${NGINX_CERTS_DIR}'` (with quotes) to avoid replacing Nginx variables like `$host`.
+
+### 6. Fix Nginx port conflict (if needed)
+
+If Docker is running, it may occupy port 8080. Either stop Docker or edit `/opt/homebrew/etc/nginx/nginx.conf` and change `listen 8080` to another port (e.g., `listen 8081`).
+
+### 7. Start Nginx
+
+```bash
+brew services restart nginx
+```
+
+### 8. Access the app
+
+Open **https://sprecha.local/** in your browser.
+
 ## Summary
 
 | Service | URL | Port |
 |---------|-----|------|
+| App (with Nginx) | https://sprecha.local/ | 443 |
 | Backend | http://127.0.0.1:8083/ | 8083 |
 | shadow-cljs | http://localhost:9630/ | 9630 |
 | nREPL | - | 4444 |
