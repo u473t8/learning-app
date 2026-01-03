@@ -1,14 +1,12 @@
 (ns core
   (:gen-class)
   (:require
-   [application]
    [buddy.hashers :as hashers]
    [cheshire.core :as cheshire]
    [clojure.string :as str]
    [db :as db]
    [hiccup :as hiccup]
    [honey.sql :as sql]
-   [layout :as layout]
    [next.jdbc :as jdbc]
    [next.jdbc.prepare :as prepare]
    [next.jdbc.result-set :as result-set]
@@ -19,7 +17,7 @@
    [reitit.interceptor.sieppari :as sieppari]
    [reitit.ring :as ring]
    [ring.middleware.session :as session]
-   [ring.middleware.session.store :as session.store]
+   [ring.middleware.session.store :as store]
    [ring.util.response :as response]
    [utils :as utils])
   (:import
@@ -34,7 +32,9 @@
 
 (def port 8083)
 
+
 (def dev-mode? (or (System/getenv "LEARNING_APP__ENVIRONMENT") true))
+
 
 (def db-auth-secret
   (if dev-mode?
@@ -46,8 +46,33 @@
 ;; DB
 ;;
 
+
 (def db-spec
   {:dbtype "sqlite", :dbname "app.db"})
+
+
+(defmacro on-connection
+  [[sym connectable] & body]
+  `(jdbc/on-connection+options [~sym (-> (jdbc/get-connection ~connectable)
+                                         (jdbc/with-logging
+                                           (fn [_sym# sql-params#]
+                                             {:time (System/currentTimeMillis)
+                                              :query sql-params#})
+                                           (fn [_sym# state# result#]
+                                             (let [data# {:time (str (- (System/currentTimeMillis) (:time state#)) " ms")
+                                                          :query (:query state#)
+                                                          :result result#}
+                                                   log-level# (if (instance? Throwable result#)
+                                                                :error
+                                                                :debug)])))
+                                         (jdbc/with-options jdbc/unqualified-snake-kebab-opts))]
+
+     ;; Enable foreign key constraints in SQLite, as they are disabled by default.
+     ;; This constraint must be enabled separately for each connection.
+     ;; See https://www.sqlite.org/foreignkeys.html#fk_enable
+     (jdbc/execute! ~sym ["PRAGMA foreign_keys = on"])
+
+     ~@body))
 
 
 ;; This makes possible to pass clojure map or vector as a query parameter.
@@ -80,7 +105,8 @@
 ;; Users
 ;;
 
- (defn user-id
+
+(defn user-id
   [db user-name password]
   (when (and (utils/non-blank user-name)
              (utils/non-blank password))
@@ -94,7 +120,7 @@
   [db user-name password]
   ;; create user in SQLite DB
   (let [password-hash (hashers/derive password {:alg :argon2id})
-        {:keys [id]}  (jdbc/execute-one! db ["INSERT INTO users (name, password) VALUES (?, ?) RETURNING id" user-name password-hash])
+        {:keys [id]} (jdbc/execute-one! db ["INSERT INTO users (name, password) VALUES (?, ?) RETURNING id" user-name password-hash])
 
         ;; create user DB in CouchDB
         couch-db (db/use (str "userdb-" id))]
@@ -103,12 +129,20 @@
     (db/secure couch-db {:members {:names [], :roles [(str "u:" id)]}})))
 
 
+(comment
+  (on-connection [db db-spec]
+                 (add-user db "shundeevegor@gmail.com" "3434"))
+  (on-connection [db db-spec]
+                 (user-id db "shundeevegor@gmail.com" "3434")))
+
+
 ;;
 ;; User Session
 ;;
 
- (deftype Sessions [db]
-  session.store/SessionStore
+
+(deftype Sessions [db]
+  store/SessionStore
   (read-session [_ token]
     (:value
      (jdbc/execute-one! db ["SELECT value FROM sessions WHERE token = ?" token]
@@ -120,26 +154,6 @@
   (delete-session [_ token]
     (jdbc/execute! db (sql/format {:delete-from :sessions, :where [:= :token token]}))
     nil))
-
-
-
-;;
-;; Pages
-;;
-
-(defn login-page
-  [{:html/keys [head body]}]
-  [:html
-   [:head
-    [:meta {:charset "UTF-8"}]
-    [:meta {:name "viewport" :content "width=device-width, initial-scale=1, interactive-widget=resizes-content"}]
-    [:title "Sprecha"]
-    [:link {:rel "icon" :href "/favicon.ico"}]
-    [:link {:rel "stylesheet" :href "/css/styles.css"}]
-    [:script {:src "/js/htmx/htmx.min.js"}]
-    head]
-   [:body
-    body]])
 
 
 (defn hmac-sign
@@ -160,9 +174,9 @@
   the current `:user-id`."
   [session]
   (if (seq session)
-    (let [user-name  (-> session :user-id str)
+    (let [user-name (-> session :user-id str)
           user-roles (str/join "," [(str "u:" user-name)])
-          token      (hmac-sign user-name db-auth-secret)]
+          token (hmac-sign user-name db-auth-secret)]
       (-> {:status 200}
           (response/header "X-Auth-UserName" user-name)
           (response/header "X-Auth-Roles" user-roles)
@@ -170,159 +184,89 @@
     {:status 401}))
 
 
+;;
+;; Interceptors
+;;
+
+
 (def session-interceptor
-  {:name  ::session-interceptor
+  {:name ::session-interceptor
    :enter (fn [ctx]
             (jdbc/on-connection [db db-spec]
-              (let [opts {:store        (->Sessions db)
-                          :set-cookies? true
-                          :cookie-name  "ring-session"
-                          :cookie-attrs {:path "/", :http-only true}}]
-                (update ctx :request session/session-request opts))))
+                                (let [opts {:store (->Sessions db)
+                                            :set-cookies? true
+                                            :cookie-name "ring-session"
+                                            :cookie-attrs {:path "/", :http-only true}}]
+                                  (update ctx :request session/session-request opts))))
    :leave (fn [ctx]
             (jdbc/on-connection [db db-spec]
-              (let [opts {:store        (->Sessions db)
-                          :set-cookies? true
-                          :cookie-name  "ring-session"
-                          :cookie-attrs {:path "/", :http-only true}}]
-                (update ctx :response session/session-response (:request ctx) opts))))})
+                                (let [opts {:store (->Sessions db)
+                                            :set-cookies? true
+                                            :cookie-name "ring-session"
+                                            :cookie-attrs {:path "/", :http-only true}}]
+                                  (update ctx :response session/session-response (:request ctx) opts))))})
 
 
-(def login-interceptor
-  {:name  ::login-interceptor
-   :enter (fn [ctx]
-            (jdbc/on-connection [db db-spec]
-              (let [{:keys [user password]} (-> ctx :request :params)
-                    user-id (user-id db user password)]
-                (assoc-in ctx [:request :user-id] user-id))))})
+;;
+;; Routes
+;;
 
 
-(def login-redirect-interceptor
-  {:name  ::login-redirect-interceptor
-   :enter (fn [ctx]
-            (let [session (-> ctx :request :session)]
-              (cond-> ctx
-                (empty? session) (assoc :queue [], :response (response/redirect "/login")))))})
+(defn service-worker-handler
+  [request]
+  (when (= (:uri request) "/js/app/sw.js")
+    (-> (response/resource-response "/public/js/app/sw.js")
+        (response/content-type "text/javascript")
+        (response/header "Service-Worker-Allowed" "/"))))
 
 
-(def root-redirect-interceptor
-  {:name  ::root-redirect-interceptor
-   :enter (fn [ctx]
-            (let [session (-> ctx :request :session)]
-              (cond-> ctx
-                (seq session) (assoc :queue [], :response (response/redirect "/")))))})
-
-
-(def app-routes
-  (http/ring-handler
-   ;; Main handler
-   (http/router
-    [(into
-      [;;  Protected routes
-       [""
-        {:interceptors [login-redirect-interceptor]}
-        ["/"
-         {:get {:handler (fn [request]
-                           (let [user-id (-> request :session :user-id)]
-                             {:html/layout layout/page
-                              :html/head   [:meta {:name "user-id" :content user-id}]
-                              :html/body   [:div#app
-                                            {:hx-get      "/home"
-                                             :hx-trigger  "controlled"
-                                             :hx-on:controlled "console.log(event, 'controlled')"
-                                             :hx-push-url "true"}]
-                              :status      200}))}}]
-        ["/js/app/sw.js"
-         {:get {:handler (fn [_]
-                           (-> (response/resource-response "public/js/app/sw.js")
-                               (response/content-type "text/javascript")
-                               (response/header "Service-Worker-Allowed" "/")))}}]
-        ["/auth/check"
-         {:get
-          (fn [{:keys [session] :as _request}]
-            (auth-proxy-response session))}]]]
-      application/ui-routes)
-
-     ;; Public Routes
-     ["/login"
-      {:interceptors [root-redirect-interceptor]
-
-       :get {:handler (fn [_]
-                        {:html/layout login-page
-                         :html/body [:div.login-page
-                                     [:form.login-page__form
-                                      {:action "/login"
-                                       :method "post"}
-                                      [:h1.login-page__header
-                                       "Вход"]
-                                      [:div.login-page__input.input
-                                       [:input.login-page__input.input__input-area
-                                        {:id "email"
-                                         :type "text"
-                                         :autocomplete "email"
-                                         :name "user"
-                                         :placeholder "Email или имя пользователя"}]
-                                       [:button.input__clear-button
-                                        {:type "button"
-                                         :hx-on:click "htmx.find('#email').value = ''; htmx.find('#email').focus()"}
-                                        #_icons/cancel]]
-                                      [:div.login-page__input.input
-                                       [:input.input__input-area
-                                        {:id "password"
-                                         :type "password"
-                                         :autocomplete "current-password"
-                                         :name "password"
-                                         :placeholder "Пароль"}]]
-                                      [:div.login-page__error-message
-                                       {:id "error-message"}]
-                                      [:button.big-button.blue-button
-                                       {:type "submit"}
-                                       [:div.big-button__loader.htmx-indicator
-                                        {:id "loader"}]
-                                       [:span.big-button__label
-                                        "ВХОД"]]]]})}
-
-       :post {:interceptors [login-interceptor]
-              :handler (fn [{:keys [user-id]}]
-                         (if user-id
-                           (-> (response/redirect "/" :see-other)
-                               (assoc :session {:user-id user-id}))
-                           (response/bad-request "Невернoе имя пользователя или пароль")))}}]]
-
-    {:data {:interceptors [session-interceptor
-                           (parameters/parameters-interceptor)
-                           (keyword-parameters/keyword-parameters-interceptor)
-                           (hiccup/interceptor {:layout-fn nil})]}})
-
-   ;; Default handler
-   (constantly {:status 404, :body ""})
-
-   ;; interceptor queue executor
-   {:executor sieppari/executor}))
-
-
-(def resource-routes
+(def resource-handler
   (ring/create-resource-handler
-   {:path        "/"
+   {:path "/"
     ;; Explicitly instruct handler not to serve any index files.
     ;; Without this, the handler may serve any index.html it finds on the classpath,
     ;; as happened once with the Datahike library.
     :index-files []}))
 
 
-(defn wrap-service-worker
-  "Middleware to serve sw.js with Service-Worker-Allowed header"
-  [handler]
-  (fn [request]
-    (if (= (:uri request) "/js/app/sw.js")
-      (-> (response/resource-response "public/js/app/sw.js")
-          (response/content-type "text/javascript")
-          (response/header "Service-Worker-Allowed" "/"))
-      (handler request))))
+(def app-handler
+  (http/ring-handler
+   ;; Main handler
+   (http/router
+    [["/auth/check"
+      {:get
+       (fn [{:keys [session] :as _request}]
+         (auth-proxy-response session))}]]
 
-(def app
-  (let [ring-handler #(-> (ring/routes resource-routes, app-routes)
-                          wrap-service-worker)]
+    {:data {:interceptors [session-interceptor
+                           (parameters/parameters-interceptor)
+                           (keyword-parameters/keyword-parameters-interceptor)]}})
+
+   ;; Default handler
+   (fn [request]
+     (hiccup/render-response
+      {:html/layout (fn layout
+                      [{:html/keys [body]}]
+                      [:html
+                       [:head
+                        [:meta {:charset "UTF-8"}]
+                        [:meta {:name "viewport" :content "width=device-width, initial-scale=1, interactive-widget=resizes-content"}]
+                        [:title "Sprecha"]
+                        [:link {:rel "icon" :href "/favicon.ico"}]
+                        [:link {:rel "manifest" :href "/manifest.json"}]]
+                       [:body
+                        body]])
+       :html/body [:script {:src "/js/sw-loader.js" :defer true}]
+       :status 200}
+      request))
+
+   ;; interceptor queue executor
+   {:executor sieppari/executor}))
+
+
+
+(def ring-handler
+  (let [ring-handler #(ring/routes service-worker-handler resource-handler app-handler)]
     (if dev-mode?
       (ring/reloading-ring-handler ring-handler)
       (ring-handler))))
@@ -333,9 +277,10 @@
 
 (defn start-server!
   [app port]
-  (reset! server (server/run-server #'app {:port port, :legacy-return-value? false})))
+  (reset! server (server/run-server app {:port port, :legacy-return-value? false})))
 
 
+#_{:clojure-lsp/ignore [:clojure-lsp/unused-public-var]}
 (defn stop-server!
   []
   (when (some? @server)
@@ -356,11 +301,11 @@
 (defn -main
   []
   (let [url (str "http://localhost:" port "/")]
-   (restart-server! #'app port)
-   (println "Serving" url)))
+    (restart-server! #'ring-handler port)
+    (println "Serving" url)))
 
 
 (comment
   ;; Clear sessions
   (jdbc/on-connection [db db-spec]
-    (jdbc/execute! db (sql/format {:delete-from :sessions}))))
+                      (jdbc/execute! db (sql/format {:delete-from :sessions}))))

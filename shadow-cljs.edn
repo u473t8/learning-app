@@ -29,16 +29,11 @@
   {:target     :browser
    :output-dir "resources/public/js/app"
    :asset-path "/js/app"
+   :module-hash-names true
    :modules
    {:sw
     {:entries    [sw]
-     :depends-on #{:shared}
-     :web-worker true}
-    :sw-loader
-    {:entries [sw-loader]
-     :depends-on #{:shared}}
-    :shared
-    {:entries []}}
+     :web-worker true}}
    :devtools
    {:devtools-url "https://sprecha.local/shadow-cljs"
     :preloads [debux.preloads]
@@ -50,4 +45,4 @@
   {:target    :node-test
    :output-to "target/node-tests.js"
    :autorun   true
-   :ns-regexp "-test$"}}}
+   :ns-regexp "-test$"}}
