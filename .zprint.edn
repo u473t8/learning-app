@@ -1,0 +1,44 @@
+;; Zprint configuration for Sprecha project
+;; See docs/code-style.md for rationale
+;;
+;; Uses :respect-nl style to preserve intentional line breaks in code,
+;; but allows map key sorting.
+
+{;; Base community style with respect for existing newlines
+ :style [:community :respect-nl]
+
+ ;; Line width
+ :width 100
+
+ ;; Two blank lines between top-level forms
+ ;; (3 newlines = 2 blank lines)
+ :parse {:interpose "\n\n\n"}
+
+ ;; Map formatting
+ :map {:comma? false           ; No commas in maps (Clojure style)
+       :respect-nl? false      ; Disable respect-nl to allow sorting
+       :sort? true             ; Sort keys alphabetically
+       :sort-in-code? false    ; Do not sort maps in code (e.g. destructuring)
+       :key-order [:id :_id]   ; Keep :id and :_id first
+       :justify? true          ; Align map values
+       :justify {:max-variance 10}}  ; Disable alignment if key length varies >15
+
+
+ ;; Let binding formatting
+ :binding {:justify? true      ; Align binding values
+           :justify {:max-variance 10}}  ; Disable if name length varies >15
+
+ ;; Pair formatting (cond, case, etc.)
+ :pair {:justify? true
+        :justify {:max-variance 10}}
+
+ ;; Function-specific formatting
+ :fn-map {;; Threading macros - keep short forms on one line
+          "->"        :none
+          "->>"       :none
+          "some->"    :none
+          "some->>"   :none
+          "jdbc/on-connection" :binding
+          ;; Require/import - use 1-space indent (not 2)
+          ":require"  [:none {:list {:indent 1}}]
+          ":import"   [:none {:list {:indent 1}}]}}

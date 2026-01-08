@@ -4,6 +4,18 @@
 
 We mostly follow the [Clojure Style Guide](https://guide.clojure.style/) with the additions listed below.
 
+## Automated Formatting
+
+Use `zprint` for automated code formatting. Project-specific rules are in `.zprint.edn`.
+
+```bash
+# Format a file
+zprint -w src/client/application.cljs
+
+# Format multiple files
+zprint -fw src/client/*.cljs
+```
+
 ## Additional Rules
 
 ### Namespace Aliases
@@ -87,19 +99,105 @@ Good
   )
 ```
 
+### Threading Form Placement
 
-NOTE: use namespace keywords in maps that represents meaningful entities
+Prefer keeping the full pipeline inside the threading macro.
+This rule applies to `->`, `->>`, `some->`, and `some->>`.
 
-Good
+Bad
 ```clojure
-;; word from vocabulary
-{:id    123
- :value "der Hund"}
+(fn-3 (-> value fn-1 fn-2))
 ```
 
 Good
 ```clojure
-;; word from vocabulary
-{:word/id    123
- :word/value "der Hund"}
+(-> value fn-1 fn-2 fn-3)
+```
+
+### Top-level Spacing
+
+Separate top-level forms with **EXACTLY** two empty lines. This makes form visually distinguishable.
+
+Bad
+```clojure
+(defn fn-1 [] ,,,)
+
+(defn fn-2 [] ,,,)
+```
+
+Good
+```clojure
+(defn fn-1 [] ,,,)
+
+
+(defn fn-2 [] ,,,)
+```
+
+
+### Map Key Sorting
+
+Map keys **SHOULD** be sorted alphabetically, with `:id` and `:_id` keys always first. This provides consistent key ordering across the codebase.
+
+**Example**
+
+Bad
+```clojure
+{:name "test"
+ :id 1
+ :value 42
+ :active true}
+```
+
+Good
+```clojure
+{:id 1
+ :active true
+ :name "test"
+ :value 42}
+```
+
+
+### Map and Binding Alignment
+
+Map values and let binding values **SHOULD** be aligned when keys/names have similar lengths. Alignment is disabled when the length variance exceeds 15 characters to avoid excessive whitespace.
+
+**Example**
+
+Good — similar key lengths, aligned
+```clojure
+{:id    1
+ :name  "test"
+ :value 42}
+```
+
+Good — similar binding lengths, aligned
+```clojure
+(let [x      1
+      longer 2
+      y      3]
+  body)
+```
+
+Good — long key, no alignment
+```clojure
+{:id 1
+ :name "test"
+ :this-is-a-very-long-key-name "value"}
+```
+
+
+### No Commas in Maps
+
+Do **NOT** use commas to separate map key-value pairs. Commas are whitespace in Clojure and add visual noise. While commas can aid readability in single-line maps, zprint cannot selectively apply them, so we omit them everywhere for consistency.
+
+**Example**
+
+Bad
+```clojure
+{:id 1, :name "test", :value 42}
+```
+
+Good
+```clojure
+{:id 1 :name "test" :value 42}
 ```
