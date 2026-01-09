@@ -102,3 +102,42 @@
   [word-id]
   (p/let [doc (db/get db word-id)]
     (db/remove db doc)))
+
+
+;;
+;; Examples
+;;
+
+
+(defn words-without-examples
+  "Returns a list of vocab words that don't have an associated example document."
+  []
+  (p/let [{words :docs} (db/find db {:selector {:type "vocab"}})
+          {examples :docs} (db/find db {:selector {:type "example"}})]
+    (let [word-ids-with-examples (set (map :word-id examples))]
+      (for [word  words
+            :when (not (contains? word-ids-with-examples (:_id word)))]
+        {:id (:_id word)
+         :value (:value word)}))))
+
+
+(defn save-example
+  "Saves an example document for a vocabulary word.
+   `word-id` - the _id of the vocab document
+   `word` - the German word (denormalized for convenience)
+   `example` - map with :value, :translation, :structure from the backend"
+  [word-id word example]
+  (let [example-doc {:type "example"
+                     :word-id word-id
+                     :word word
+                     :value (:value example)
+                     :translation (:translation example)
+                     :structure (:structure example)}]
+    (db/insert db example-doc)))
+
+
+(defn get-example
+  "Retrieves the example document for a given word-id, or nil if none exists."
+  [word-id]
+  (p/let [{examples :docs} (db/find db {:selector {:type "example", :word-id word-id}})]
+    (first examples)))

@@ -5,6 +5,7 @@
    [cheshire.core :as cheshire]
    [clojure.string :as str]
    [db :as db]
+   [examples :as examples]
    [hiccup :as hiccup]
    [honey.sql :as sql]
    [next.jdbc :as jdbc]
@@ -236,7 +237,20 @@
     [["/auth/check"
       {:get
        (fn [{:keys [session] :as _request}]
-         (auth-proxy-response session))}]]
+         (auth-proxy-response session))}]
+
+     ["/api/examples"
+      {:get
+       (fn [request]
+         (let [word (-> request :params :word)]
+           (if (utils/non-blank word)
+             (let [example (examples/generate-one! word)]
+               {:status 200
+                :headers {"Content-Type" "application/json"}
+                :body (cheshire/generate-string example)})
+             {:status 400
+              :headers {"Content-Type" "application/json"}
+              :body (cheshire/generate-string {:error "Missing 'word' parameter"})})))}]]
 
     {:data {:interceptors [session-interceptor
                            (parameters/parameters-interceptor)
