@@ -1,6 +1,7 @@
 (ns application
   (:require
    [clojure.string :as str]
+   [examples :as examples]
    [hiccup :as hiccup]
    [promesa.core :as p]
    [reitit.http :as http]
@@ -253,6 +254,12 @@
    :enter (fn [ctx]
             (p/let [{:keys [value translation]} (-> ctx :request :params)
                     word-id (vocabulary/add-word value translation)]
+              ;; Fetch example asynchronously (fire-and-forget, don't block response)
+              (when (examples/online?)
+                (-> (examples/fetch-example value)
+                    (p/then (fn [example]
+                              (when example
+                                (vocabulary/save-example word-id value example))))))
               (assoc-in ctx [:request :params :word-id] word-id)))})
 
 (def change-word-interceptor
