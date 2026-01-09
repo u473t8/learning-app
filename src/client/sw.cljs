@@ -5,6 +5,7 @@
   (:require
    [application :as application]
    [clojure.string :as str]
+   [examples :as examples]
    [lambdaisland.glogi :as log]
    [lambdaisland.glogi.console :as glogi-console]
    [promesa.core :as p]
@@ -56,7 +57,18 @@
    (..
     event
     (waitUntil
-     (js/self.clients.claim)))))
+     (p/do
+       (js/self.clients.claim)
+       ;; Sync examples when service worker activates (app startup)
+       (when (examples/online?)
+         (examples/sync-examples!)))))))
+
+
+(js/self.addEventListener
+ "online"
+ (fn [_event]
+   (log/info :event/online "Browser came online, syncing examples")
+   (examples/sync-examples!)))
 
 
 (js/self.addEventListener
@@ -71,6 +83,15 @@
   [request]
   (let [path (.-pathname (js/URL. (.-url request)))]
     (contains? (set base-precache-urls) path)))
+
+
+
+(defn- api-request?
+  "Returns true if this is a request to the backend API (e.g., /api/examples).
+   API requests should be network-only, not cached."
+  [request]
+  (let [path (.-pathname (js/URL. (.-url request)))]
+    (str/starts-with? path "/api/")))
 
 
 (defn network-first-fetch
@@ -128,9 +149,10 @@
     event
     (respondWith
      (p/let [request (.. event -request)]
-       (if (static-request? request)
-         (network-first-fetch request)
-         (local-handler request)))))))
+       (cond
+         (api-request? request)    (js/fetch request)
+         (static-request? request) (network-first-fetch request)
+         :else                     (local-handler request)))))))
 
 
 #_{:clojure-lsp/ignore [:clojure-lsp/unused-public-var]}
