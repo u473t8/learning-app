@@ -26,16 +26,22 @@
    "/js/sw-loader.js"
    "/fonts/Nunito/nunito-v26-cyrillic_latin-regular.woff2"
    "/fonts/Nunito/nunito-v26-cyrillic_latin-500.woff2"
+   "/fonts/Nunito/nunito-v26-cyrillic_latin-600.woff2"
+   "/fonts/Nunito/nunito-v26-cyrillic_latin-600italic.woff2"
    "/fonts/Nunito/nunito-v26-cyrillic_latin-700.woff2"
    "/fonts/Nunito/nunito-v26-cyrillic_latin-800.woff2"
    "/js/htmx/htmx.min.js"
    "/js/htmx/idiomorph-ext.min.js"
    "/favicon.ico"
-   "/icons.svg"])
+   "/icons.svg"
+   "/icons/ue-192.png"
+   "/icons/ue-512.png"])
+
 
 ;;
 ;; Listeners
 ;;
+
 
 (js/self.addEventListener
  "install"
