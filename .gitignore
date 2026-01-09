@@ -33,3 +33,4 @@ app.db
 
 # Keep emacs config
 !.dir-locals.el
+/.clojure-mcp/scratch_pad.edn
