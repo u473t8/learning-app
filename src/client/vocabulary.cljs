@@ -52,20 +52,26 @@
     (* 100 (math/exp (- (* forgetting-rate time-since-last-review))))))
 
 (defn words
-  []
-  (p/let [{words :docs} (db/find db {:selector {:type "vocab"}})
-          {reviews :docs} (db/find db {:selector {:type "review"}})]
-    (sort-by
-     :retention-level
-     > ; descending order
-     (for [word words]
-       {:id (:_id word)
-        :value (:value word)
-        :translation (->> (:translation word)
-                          (filter #(-> % :lang (= "ru")))
-                          (map :value)
-                          first)
-        :retention-level (retention-level (filter #(-> % :word-id (= (:_id word))) reviews))}))))
+  "Returns vocabulary words with retention levels.
+   Options:
+   - :order - :desc (default, highest first) or :asc (lowest first)
+   - :limit - max number of words to return (nil for all)"
+  ([] (words {}))
+  ([{:keys [order limit] :or {order :desc}}]
+   (p/let [{words :docs}   (db/find db {:selector {:type "vocab"}})
+           {reviews :docs} (db/find db {:selector {:type "review"}})]
+     (cond->> (for [word words]
+                {:id (:_id word)
+                 :value (:value word)
+                 :translation (->> (:translation word)
+                                   (filter #(-> % :lang (= "ru")))
+                                   (map :value)
+                                   first)
+                 :retention-level (retention-level (filter #(-> % :word-id (= (:_id word)))
+                                                           reviews))})
+       :always (sort-by :retention-level (if (= order :asc) < >))
+       limit   (take limit)))))
+
 
 (defn words-count
   []
@@ -141,3 +147,40 @@
   [word-id]
   (p/let [{examples :docs} (db/find db {:selector {:type "example", :word-id word-id}})]
     (first examples)))
+
+
+(defn delete-example
+  "Deletes an example document by its _id."
+  [example-id]
+  (p/let [doc (db/get db example-id)]
+    (db/remove db doc)))
+
+
+(defn words-for-lesson
+  "Returns up to n words with lowest retention levels, each enriched with example if available.
+   Optimized to only fetch examples for the selected words."
+  [n]
+  (p/let [selected-words (words {:order :asc :limit n})
+          word-ids (mapv :id selected-words)
+          {examples :docs} (db/find db {:selector {:type "example" :word-id {:$in word-ids}}})
+          examples-by-word-id (group-by :word-id examples)]
+    (mapv (fn [word]
+            (let [example (first (get examples-by-word-id (:id word)))]
+              (cond-> word
+                example (assoc :example
+                               {:id        (:_id example)
+                                :value     (:value example)
+                                :translation (:translation example)
+                                :structure (:structure example)}))))
+          selected-words)))
+
+
+(defn add-review
+  "Creates a review document for a word."
+  [word-id retained translation]
+  (let [review {:type        "review"
+                :word-id     word-id
+                :retained    retained
+                :timestamp   (utils/now-iso)
+                :translation [{:lang "ru" :value translation}]}]
+    (db/insert db review)))
