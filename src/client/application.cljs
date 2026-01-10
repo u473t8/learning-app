@@ -12,9 +12,11 @@
    [utils :as utils]
    [vocabulary :as vocabulary]))
 
+
 ;;
 ;; Home View
 ;;
+
 
 (defn word-list-item
   [{:keys [id editing? retention-level translation value]}]
@@ -23,27 +25,26 @@
                          (>= retention-level 80) "Отлично запомнено"
                          (>= retention-level 50) "Хорошо изучено"
                          (>= retention-level 20) "Нужно повторить"
-                         :else "Новое слово")]
+                         :else                   "Новое слово")]
     [:li.word-item
-     {:class (when editing? "word-item--editing")
-      :id item-id}
+     {:class (when editing? "word-item--editing") :id item-id}
      (if editing?
        ;; Edit mode - show inputs
        [:form.word-item__form
-        {:hx-put (str "/words?word-id=" id)
+        {:hx-put     (str "/words?word-id=" id)
          :hx-trigger "submit"
-         :hx-swap "outerHTML"
-         :hx-target (str "#" item-id)}
+         :hx-swap    "outerHTML"
+         :hx-target  (str "#" item-id)}
         [:div.word-item__inputs
          [:input.word-item__input
-          {:name "value"
+          {:name        "value"
            :autocapitalize "off"
            :autocomplete "off"
            :autocorrect "off"
-           :autofocus true
-           :lang "de"
+           :autofocus   true
+           :lang        "de"
            :placeholder "Слово"
-           :value value}]
+           :value       value}]
          [:span.word-item__arrow "→"]
          [:input.word-item__input
           {:name "translation"
@@ -56,24 +57,22 @@
         [:div.word-item__actions
          [:button.word-item__save {:type "submit"} "Сохранить"]
          [:button.word-item__cancel
-          {:type "button"
-           :hx-get (str "/words/" id)
+          {:type      "button"
+           :hx-get    (str "/words/" id)
            :hx-target (str "#" item-id)
-           :hx-swap "outerHTML"}
+           :hx-swap   "outerHTML"}
           "Отмена"]
          [:button.word-item__delete
-          {:type "button"
-           :hx-delete (str "/words?id=" id)
+          {:type       "button"
+           :hx-delete  (str "/words?id=" id)
            :hx-confirm (str "Удалить «" value "»?")
            :hx-trigger "click"
-           :hx-swap "delete"
-           :hx-target (str "#" item-id)}
+           :hx-swap    "delete"
+           :hx-target  (str "#" item-id)}
           "Удалить"]]]
        ;; Display mode - show text, tap to edit
        [:div.word-item__display
-        {:hx-get (str "/words/" id "?edit=true")
-         :hx-target (str "#" item-id)
-         :hx-swap "outerHTML"}
+        {:hx-get (str "/words/" id "?edit=true") :hx-target (str "#" item-id) :hx-swap "outerHTML"}
         [:div.word-item__retention
          {:style {:background-color (utils/prozent->color retention-level)}
           :title (str retention-text " (" (int retention-level) "%)")}]
@@ -82,9 +81,9 @@
         [:span.word-item__translation {:lang "ru"} translation]
         [:span.word-item__chevron "›"]])]))
 
+
 (defn- word-list
-  [{:keys [pages search show-more? words]
-    :or {pages 0, show-more? true}}]
+  [{:keys [pages search show-more? words] :or {pages 0 show-more? true}}]
   [:ul.word-list
    {:id "word-list"}
    (if (seq words)
@@ -93,8 +92,8 @@
         (word-list-item word))
       (when show-more?
         [:li.word-list__load-more
-         {:hx-get (utils/build-url "/words?limit=5" {:pages (inc pages), :search search})
-          :hx-swap "outerHTML"
+         {:hx-get     (utils/build-url "/words?limit=5" {:pages (inc pages) :search search})
+          :hx-swap    "outerHTML"
           :hx-trigger "click"}
          "Загрузить ещё ↓"]))
      ;; Empty state
@@ -108,11 +107,9 @@
          [:p.empty-state__text "Слов пока нет"]
          [:p.empty-state__hint "Добавьте первое слово на главной странице"]
          [:button.empty-state__cta
-          {:hx-get "/home"
-           :hx-push-url "true"
-           :hx-swap "innerHTML"
-           :hx-target "#app"}
+          {:hx-get "/home" :hx-push-url "true" :hx-swap "innerHTML" :hx-target "#app"}
           "Добавить слово"]])])])
+
 
 (defn page-layout
   [{:html/keys [head body]}]
@@ -164,14 +161,13 @@
          [:h2.home__panel-title
           "Быстрое добавление"]
          [:button.home__words-button
-          {:hx-get "/words"
-           :hx-push-url "true"
-           :hx-swap "innerHTML"
-           :hx-target "#app"}
+          {:hx-get "/words" :hx-push-url "true" :hx-swap "innerHTML" :hx-target "#app"}
           "Список слов"]]
         [:form.new-word-form.new-word-form--quick
-         {:hx-on:submit "if(this.dataset.submitting) {event.preventDefault(); return;} this.dataset.submitting = 'true'"
-          :hx-on:htmx:after-request "if(event.detail.successful) {this.reset(); htmx.find('#new-word-value').focus(); htmx.trigger(document.body, 'words-changed')} delete this.dataset.submitting"
+         {:hx-on:submit
+          "if(this.dataset.submitting) {event.preventDefault(); return;} this.dataset.submitting = 'true'"
+          :hx-on:htmx:after-request
+          "if(event.detail.successful) {this.reset(); htmx.find('#new-word-value').focus(); htmx.trigger(document.body, 'words-changed')} delete this.dataset.submitting"
           :hx-post "/words"
           :hx-push-url "false"
           :hx-swap "none"}
@@ -200,21 +196,19 @@
           {:type "submit"}
           "ДОБАВИТЬ"]]]]
       [:div.home__words-probe
-       {:hx-get "/word-count"
+       {:hx-get      "/word-count"
         :hx-push-url "false"
-        :hx-trigger "load, words-changed from:body"
-        :hx-target "#word-count"
-        :hx-swap "outerHTML"}
+        :hx-trigger  "load, words-changed from:body"
+        :hx-target   "#word-count"
+        :hx-swap     "outerHTML"}
        [:span#word-count {:class count-class} (str word-count)]]]]))
+
 
 (def words-page
   [:div.words-page
    [:header.words-page__header
     [:button.words-page__back
-     {:hx-get "/home"
-      :hx-push-url "true"
-      :hx-swap "innerHTML"
-      :hx-target "#app"}
+     {:hx-get "/home" :hx-push-url "true" :hx-swap "innerHTML" :hx-target "#app"}
      "← Назад"]
     [:h1.words-page__title
      "Мои слова"]]
@@ -223,24 +217,23 @@
      [:span.input__search-icon]
      [:input.input__input-area.input__input-area--icon
       {:autocomplete "off"
-       :hx-get "/words"
-       :placeholder "Поиск"
-       :hx-target "#word-list"
-       :hx-swap "innerHTML"
-       :hx-trigger "input changed delay:500ms, keyup[key=='Enter']"
-       :name "search"}]]]
+       :hx-get       "/words"
+       :placeholder  "Поиск"
+       :hx-target    "#word-list"
+       :hx-swap      "innerHTML"
+       :hx-trigger   "input changed delay:500ms, keyup[key=='Enter']"
+       :name         "search"}]]]
    [:div.words-page__list
-    {:hx-get "/words"
-     :hx-trigger "load"
-     :hx-target "#word-list"
-     :hx-swap "outerHTML"}
+    {:hx-get "/words" :hx-trigger "load" :hx-target "#word-list" :hx-swap "outerHTML"}
     [:ul.word-list
      {:id "word-list"}]]
    [:footer.words-page__footer
     [:button.words-page__start.big-button.green-button
-     {:hx-get "/lesson"
+     {:hx-get       "/lesson"
       :hx-indicator "#loader"
-      :hx-push-url "true"}
+      :hx-push-url  "true"
+      :hx-swap      "innerHTML"
+      :hx-target    "#app"}
      "НАЧАТЬ УРОК"]]])
 
 
@@ -377,6 +370,7 @@
 ;; Routes
 ;;
 
+
 (def words-interceptor
   {:name  ::words-interceptor
    :enter (fn [ctx]
@@ -397,15 +391,17 @@
                                 (vocabulary/save-example word-id value example))))))
               (assoc-in ctx [:request :params :word-id] word-id)))})
 
+
 (def change-word-interceptor
-  {:name ::change-word-interceptor
+  {:name  ::change-word-interceptor
    :enter (fn [ctx]
             (let [{:keys [word-id value translation]} (-> ctx :request :params)]
               (p/let [word (vocabulary/change-word word-id value translation)]
                 (assoc-in ctx [:request :vocabulary/word] word))))})
 
+
 (def delete-word-interceptor
-  {:name ::delete-word-interceptor
+  {:name  ::delete-word-interceptor
    :enter (fn [ctx]
             (let [word-id (-> ctx :request :params :id)]
               (p/do
@@ -459,19 +455,23 @@
               (lesson/finish-lesson!)
               (p/let [word-count (vocabulary/words-count)]
                 (assoc-in ctx [:request :lesson/word-count] word-count))))})
+
+
 (defn- htmx-request?
   [request]
   (-> request :headers (get "hx-request")))
 
+
 (def page-layout-interceptor
-  {:name ::page-layout-interceptor
+  {:name  ::page-layout-interceptor
    :leave (fn [ctx]
-            (let [request (:request ctx)
+            (let [request  (:request ctx)
                   response (:response ctx)]
               (if (or (htmx-request? request)
                       (nil? (:html/body response)))
                 ctx
                 (assoc-in ctx [:response :html/layout] page-layout))))})
+
 
 (def ui-routes
   [[""
@@ -484,79 +484,76 @@
      {:get (fn [_]
              (p/let [count (vocabulary/words-count)
                      class (if (zero? count) "word-count--empty" "word-count--ready")]
-               {:html/body [:span#word-count {:class class} (str count)]
-                :status 200}))}]
+               {:html/body [:span#word-count {:class class} (str count)] :status 200}))}]
 
     ["/words"
-     {:get {:interceptors [words-interceptor]
-            :handler (fn [{:keys [pages search words] :as request}]
-                       (let [show-more? (>= (count words) 10)
-                             htmx-target (-> request :headers (get "hx-target"))]
-                         (cond
-                           (and (htmx-request? request) (= htmx-target "word-list"))
-                           {:html/body (word-list {:pages pages
-                                                   :search search
-                                                   :show-more? show-more?
-                                                   :words words})
-                            :status 200}
+     {:get    {:interceptors [words-interceptor]
+               :handler      (fn [{:keys [pages search words] :as request}]
+                               (let [show-more?  (>= (count words) 10)
+                                     htmx-target (-> request :headers (get "hx-target"))]
+                                 (cond
+                                   (and (htmx-request? request) (= htmx-target "word-list"))
+                                   {:html/body (word-list {:pages      pages
+                                                           :search     search
+                                                           :show-more? show-more?
+                                                           :words      words})
+                                    :status    200}
 
-                           (htmx-request? request)
-                           {:html/body words-page
-                            :status 200}
+                                   (htmx-request? request)
+                                   {:html/body words-page :status 200}
 
-                           :else
-                           {:html/body words-page
-                            :status 200})))}
+                                   :else
+                                   {:html/body words-page :status 200})))}
+      :post   {:interceptors [add-word-interceptor]
+               :handler      (fn [request]
+                               (let [{:keys [value translation word-id]} (:params request)]
+                                 (if (or
+                                      (not (string? value))
+                                      (str/blank? value)
+                                      (not (string? translation))
+                                      (str/blank? translation))
+                                   {:html/body
+                                    (cond-> (list)
+                                      (or (not (string? value)) (str/blank? value))
+                                      (conj
+                                       [:input.new-word-form__input.new-word-form__input--error
+                                        {:hx-on:change "htmx.find('#new-word-translation').focus()"
+                                         :hx-swap-oob "true"
+                                         :id "new-word-value"
+                                         :name "value"}])
 
-      :post {:interceptors [add-word-interceptor]
-             :handler (fn [request]
-                        (let [{:keys [value translation word-id]} (:params request)]
-                          (if (or
-                               (not (string? value)) (str/blank? value)
-                               (not (string? translation)) (str/blank? translation))
-                            {:html/body (cond-> (list)
-                                          (or (not (string? value)) (str/blank? value))
-                                          (conj
-                                           [:input.new-word-form__input.new-word-form__input--error
-                                            {:hx-on:change "htmx.find('#new-word-translation').focus()"
-                                             :hx-swap-oob "true"
-                                             :id "new-word-value"
-                                             :name "value"}])
-
-                                          (or (not (string? translation)) (str/blank? translation))
-                                          (conj
-                                           [:input.new-word-form__input.new-word-form__input--error
-                                            {:id "new-word-translation"
-                                             :hx-swap-oob "true"
-                                             :name "translation"}]))
-                             :status 400}
-                            {:html/body (word-list-item
-                                         {:id word-id
-                                          :value value
-                                          :translation translation
-                                          :retention-level 100})
-                             :status 200})))}
-
-      :put {:interceptors [change-word-interceptor]
-            :handler (fn [request]
-                       (let [{:keys [id value translation retention-level]} (:vocabulary/word request)]
-                         {:status 200
-                          :html/body (word-list-item
-                                      {:id id
-                                       :value value
-                                       :translation translation
-                                       :retention-level retention-level})}))}
-      :delete {:interceptors [delete-word-interceptor]
-               :handler (fn [_] {:status 200})}}]
+                                      (or (not (string? translation)) (str/blank? translation))
+                                      (conj
+                                       [:input.new-word-form__input.new-word-form__input--error
+                                        {:id   "new-word-translation"
+                                         :hx-swap-oob "true"
+                                         :name "translation"}]))
+                                    :status 400}
+                                   {:html/body (word-list-item
+                                                {:id word-id
+                                                 :value value
+                                                 :translation translation
+                                                 :retention-level 100})
+                                    :status    200})))}
+      :put    {:interceptors [change-word-interceptor]
+               :handler      (fn [request]
+                               (let [{:keys [id value translation retention-level]}
+                                     (:vocabulary/word request)]
+                                 {:status    200
+                                  :html/body (word-list-item
+                                              {:id id
+                                               :value value
+                                               :translation translation
+                                               :retention-level retention-level})}))}
+      :delete {:interceptors [delete-word-interceptor] :handler (fn [_] {:status 200})}}]
 
     ["/words/:id"
      {:get (fn [request]
-             (let [word-id (-> request :path-params :id)
+             (let [word-id      (-> request :path-params :id)
                    query-string (:query-string request)
-                   edit? (and query-string (str/includes? query-string "edit=true"))]
+                   edit?        (and query-string (str/includes? query-string "edit=true"))]
                (p/let [word (vocabulary/get-word word-id)]
-                 {:html/body (word-list-item (assoc word :editing? edit?))
-                  :status 200})))}]
+                 {:html/body (word-list-item (assoc word :editing? edit?)) :status 200})))}]
 
     ["/lesson"
      {:get    {:interceptors [lesson-get-interceptor]
@@ -587,7 +584,6 @@
                                       :status    200})
 
                                    {:status 404})))}
-
       :delete {:interceptors [lesson-finish-interceptor]
                :handler      (fn [{:lesson/keys [word-count]}]
                                {:headers   {"HX-Push-Url" "/home"}
@@ -605,6 +601,6 @@
                            (hiccup/interceptor)
                            page-layout-interceptor]}})
 
-   (constantly {:status 404, :body ""})
+   (constantly {:status 404 :body ""})
 
    {:executor sieppari/executor}))
