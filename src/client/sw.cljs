@@ -16,7 +16,7 @@
 
 
 (log/set-levels
- {:glogi/root :all})
+ {:glogi/root :debug})
 
 
 (def base-precache-urls
