@@ -6,7 +6,7 @@
 
 (defn open-ai-service-account-api-key
   []
-  (System/getenv "OPEN_AI_KEY"))
+  (System/getenv "OPENAI_API_KEY"))
 
 
 (def system-prompt
@@ -33,7 +33,7 @@ Return only the JSON object without additional text.")
               "Content-Type" "application/json"}
     :body
     (cheshire/generate-string
-     {:model "gpt-4.1-2025-04-14" #_"gpt-4o-mini"
+     {:model "gpt-5.2"
       :messages [{:role "system"
                   :content system-prompt}
                  {:role "user"
