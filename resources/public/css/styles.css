@@ -529,8 +529,12 @@ textarea {
 html {
     overflow-scrolliqg: touch;
     box-sizing: border-box;
-    overflow-y: scroll;
+    overflow-y: auto;
     touch-action: manipulation
+}
+
+html:has(.learning-session) {
+    overflow: hidden;
 }
 
 @media (min-width: 700px) {
@@ -548,6 +552,39 @@ body {
     margin: 0
 }
 
+body:has(.learning-session) {
+    overflow: hidden;
+    height: 100%;
+}
+
+body:has(.learning-session) #app {
+    height: 100%;
+}
+
+.app-logo {
+    align-items: center;
+    color: rgb(var(--color-black-text));
+    display: inline-flex;
+    font-family: Nunito, sans-serif;
+    font-size: 18px;
+    font-weight: 800;
+    left: 16px;
+    position: fixed;
+    text-decoration: none;
+    top: 16px;
+    z-index: 20;
+}
+
+.home__title--sr {
+    border: 0;
+    clip: rect(0 0 0 0);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    width: 1px;
+}
 @media (min-width: 700px) {
     body {
         padding-bottom: var(--onetrust-banner-height, 0)
@@ -772,23 +809,22 @@ Home Page
 *********/
 
 .learning-session {
-    display: grid ;
-    grid-gap: 24px;
-    grid-template-columns: 100%;
-    grid-template-rows: min-content 1fr min-content;
-    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    height: 100dvh;
     left: 0;
-    min-height: 460px;
+    min-height: 100dvh;
     overflow: hidden;
     position: absolute;
+    padding-top: 56px;
     top: 0;
     width: 100%;
 }
 
 @media (min-width: 700px) {
     .learning-session {
-        grid-gap: 0;
-        grid-template-rows: 100px 1fr 140px;
+        gap: 0;
         min-height: 690px;
         padding: 0;
     }
@@ -802,9 +838,8 @@ Home Page
 
 .learning-session__header {
     align-items: center;
-    display: grid;
-    grid-template-columns: min-content 1fr;
-    grid-gap: 24px;
+    display: flex;
+    gap: 24px;
     margin: 0 auto;
     padding: 24px;
     width: 100%;
@@ -818,13 +853,16 @@ Home Page
 }
 
 .cancel-button {
+    align-items: center;
     border: none;
     background: none;
     cursor: pointer;
-    padding: 0;
+    display: inline-flex;
+    height: 44px;
     outline: 0;
-    height: 18px;
-    width: 18px;
+    justify-content: center;
+    padding: 0;
+    width: 44px;
 }
 
 @media (hover: hover) {
@@ -841,6 +879,8 @@ Home Page
     --web-ui_progress-bar-shine-height: 3px;
     --__internal__progress-bar-height: 16px;
     --__internal__progress-bar-inner-value: 0%;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .progress-bar-value {
@@ -876,11 +916,13 @@ Home Page
     font-size: 19px;
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1fr);
-    height: 100%;
+    height: auto;
     justify-content: center;
+    min-height: 0;
     padding: 0 24px;
     text-align: center;
     width: 100%;
+    flex: 1 1 auto;
 }
 
 @media (min-width: 700px) {
@@ -959,6 +1001,50 @@ Home Page
     padding: 24px;
     position: relative;
     width: 100%;
+    flex: 0 0 auto;
+}
+
+.learning-session__footer--input {
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+}
+
+.learning-session__footer--input .learning-session__action {
+    max-width: 600px;
+    width: 100%;
+}
+
+.learning-session__footer--input .text-input {
+    max-width: 600px;
+    min-height: 64px;
+    height: clamp(64px, 14vh, 120px);
+    max-height: 120px;
+    width: min(600px, 100%) !important;
+}
+
+@media (max-height: 700px) {
+    .learning-session {
+        gap: 12px;
+    }
+
+    .learning-session__header {
+        padding: 16px 16px 8px;
+    }
+
+    .learning-session__footer {
+        gap: 10px;
+        padding: 12px 16px 16px;
+    }
+
+    .learning-session__body {
+        padding: 0 16px;
+    }
+
+    .learning-session__footer--input .text-input {
+        max-height: 18vh;
+        min-height: 56px;
+    }
 }
 
 .learning-session__footer--success {
@@ -988,6 +1074,11 @@ Home Page
         align-items: center;
     }
 
+    .learning-session__footer--input {
+        flex-direction: column;
+        justify-content: center;
+    }
+
     .session-footer--error {
         justify-content: space-between;
     }
@@ -999,6 +1090,19 @@ Home Page
 }
 
 .learning-session__action button{
+    width: 100%;
+}
+
+.learning-session__empty {
+    align-items: center;
+    display: flex;
+    height: 100%;
+    justify-content: center;
+    flex-direction: column;
+    gap: 8px;
+    grid-row: 1 / -1;
+    padding: 40px 24px;
+    text-align: center;
     width: 100%;
 }
 
@@ -1029,7 +1133,7 @@ Home Page
     margin: 0 auto;
     max-width: 980px;
     min-height: 100vh;
-    padding: 20px 16px 32px;
+    padding: 64px 16px 32px;
     width: 100%;
 }
 
@@ -1945,6 +2049,7 @@ Home Page
     max-width: 600px;
     min-height: 100dvh;
     padding-bottom: calc(80px + env(safe-area-inset-bottom));
+    padding-top: 56px;
     width: 100%;
 }
 
@@ -1980,10 +2085,22 @@ Home Page
     flex: 1;
 }
 
+.words-page:has(.word-list__empty:only-child) .words-page__list {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.words-page:has(.word-list__empty:only-child) .word-list {
+    width: 100%;
+}
+
 .words-page__footer {
     background: rgb(var(--color-polar));
     bottom: 0;
     box-shadow: 0 -2px 12px rgb(0 0 0 / 0.08);
+    display: flex;
+    justify-content: center;
     left: 0;
     padding: 16px;
     padding-bottom: calc(16px + env(safe-area-inset-bottom));
@@ -1997,8 +2114,16 @@ Home Page
     width: 100%;
 }
 
+.words-page__start.big-button {
+    width: 100%;
+}
+
 /* Hide search when list is empty */
 .words-page:has(.word-list__empty:only-child) .words-page__search {
+    display: none;
+}
+
+.words-page:has(.word-list__empty:only-child) .words-page__footer {
     display: none;
 }
 
@@ -2014,6 +2139,22 @@ Home Page
     
     .word-item__input {
         width: 100%;
+    }
+}
+
+@media (min-width: 700px) {
+    .words-page__start {
+        max-width: 320px;
+    }
+}
+
+@media (max-width: 699px) {
+    .words-page__footer {
+        justify-content: stretch;
+    }
+
+    .words-page__start {
+        max-width: none;
     }
 }
 
@@ -2265,4 +2406,15 @@ Home Page
     .new-word-form__input--quick {
         width: 100%;
     }
+}
+
+.big-button[disabled] {
+    background-color: var(--__internal__background-color-disabled);
+    color: var(--__internal__color-disabled);
+    pointer-events: none;
+    cursor: not-allowed;
+}
+
+.big-button[disabled]::before {
+    background-color: var(--__internal__background-color-disabled);
 }

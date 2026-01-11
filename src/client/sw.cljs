@@ -67,14 +67,14 @@
        (js/self.clients.claim)
        ;; Sync examples when service worker activates (app startup)
        (when (examples/online?)
-         (examples/sync-examples!)))))))
+         (examples/sync!)))))))
 
 
 (js/self.addEventListener
  "online"
  (fn [_event]
    (log/info :event/online "Browser came online, syncing examples")
-   (examples/sync-examples!)))
+   (examples/sync!)))
 
 
 (js/self.addEventListener
@@ -91,7 +91,6 @@
     (contains? (set base-precache-urls) path)))
 
 
-
 (defn- api-request?
   "Returns true if this is a request to the backend API (e.g., /api/examples).
    API requests should be network-only, not cached."
@@ -105,10 +104,10 @@
   (p/catch
    (p/let [response (js/fetch request)
            cache    (js/caches.open "resources")]
-     (.put cache request (.clone response))
-     response)
+    (.put cache request (.clone response))
+    response)
    (fn [_]
-     (js/caches.match request))))
+    (js/caches.match request))))
 
 
 (defn- request->ring
@@ -117,16 +116,15 @@
   (let [request    (.clone request)
         url-object (js/URL. (.-url request))
         headers    (-> request .-headers .entries js/Object.fromEntries js->clj)]
-    {:server-port    (.-port url-object)
-     :server-name    (.-hostname url-object)
-     :uri            (.-pathname url-object)
-     :url            (.-url request)
-     :query-string   (utils/non-blank (.-search url-object))
-     :scheme         (-> url-object .-protocol (str/replace #":" "") keyword)
+    {:server-port (.-port url-object)
+     :server-name (.-hostname url-object)
+     :uri (.-pathname url-object)
+     :url (.-url request)
+     :query-string (utils/non-blank (.-search url-object))
+     :scheme (-> url-object .-protocol (str/replace #":" "") keyword)
      :request-method (-> request .-method str/lower-case keyword)
-     :headers        headers
-     :body           (.-body request)
-
+     :headers headers
+     :body (.-body request)
      ;; Custom non-ring fields
      :js/request request}))
 
@@ -162,6 +160,9 @@
 
 
 #_{:clojure-lsp/ignore [:clojure-lsp/unused-public-var]}
-(defn ^:dev/after-load update-registration []
+
+
+(defn ^:dev/after-load update-registration
+  []
   (log/debug :dev/after-load "Update service worker")
   (js/self.registration.update))
