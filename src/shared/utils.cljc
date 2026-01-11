@@ -22,6 +22,11 @@
        (let [query-params (js/URLSearchParams. (clj->js query-params))]
          (str path "?" query-params)))))
 
+#?(:cljs
+   (defn fire-and-forget!
+     [f]
+     (js/setTimeout f 0)))
+
 
 (comment
   (build-url "/base" {:a 1})     ;; => "/base?a=1"
