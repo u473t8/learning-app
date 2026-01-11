@@ -15,9 +15,12 @@
 
 (def ^:private lesson-id "lesson")
 
+
 (def ^:private words-per-lesson 3)
 
+
 (def ^:private trial-type-word "word")
+
 
 (def ^:private trial-type-example "example")
 
@@ -58,8 +61,8 @@
   (first (filter #(= (:id %) word-id) words)))
 
 
-(defn lesson-doc
-  "Create a new lesson document from words."
+(defn initial-state
+  "Create a new lesson state from words."
   [words]
   (let [trials (generate-trials words)]
     {:_id         lesson-id
@@ -72,36 +75,29 @@
      :last-result nil}))
 
 
-(defn get-lesson
+(defn get-state
   []
   (db/get db lesson-id))
 
 
-(defn start-lesson!
+(defn ensure!
   []
-  (p/let [existing (get-lesson)
-          words    (vocabulary/words-for-lesson words-per-lesson)]
-    (log/debug :start-lesson/words words)
-    (when (seq words)
-      (let [doc (cond-> (lesson-doc (vec words))
-                  existing (assoc :_rev (:_rev existing)))]
-        (p/let [{:keys [rev]} (db/insert db doc)]
-          (assoc doc :_rev rev))))))
-
-
-(defn ensure-lesson!
-  []
-  (p/let [existing (get-lesson)]
+  (p/let [existing (get-state)]
     (if existing
       existing
-      (start-lesson!))))
+      (p/let [words (vocabulary/words-for-lesson words-per-lesson)]
+        (when (seq words)
+          (log/debug :ensure-lesson/start words)
+          (let [lesson-state (initial-state (vec words))]
+            (p/let [{:keys [rev]} (db/insert db lesson-state)]
+              (assoc lesson-state :_rev rev))))))))
 
 
-(defn- correct-answer
+(defn expected-answer
   "Get the expected answer for a trial."
-  [lesson]
-  (let [current-trial (:current-trial lesson)
-        word (find-word (:words lesson) (:word-id current-trial))]
+  [state]
+  (let [current-trial (:current-trial state)
+        word (find-word (:words state) (:word-id current-trial))]
     (if (example-trial? current-trial)
       (-> word :example :value)
       (:value word))))
@@ -127,20 +123,18 @@
 
 (defn check-answer!
   "Check the user's answer for the current trial.
-   Returns {:correct? :correct-answer :is-finished? :lesson}"
-  [lesson answer]
-  (let [current-trial (:current-trial lesson)
-        word          (find-word (:words lesson) (:word-id current-trial))
-        answer-text   (correct-answer lesson)
+   Returns {:correct? :correct-answer :is-finished? :state}"
+  [state answer]
+  (let [current-trial (:current-trial state)
+        word          (find-word (:words state) (:word-id current-trial))
+        answer-text   (expected-answer state)
         correct?      (= (normalized-answer answer)
                          (normalized-answer answer-text))
         remaining     (if correct?
-                        (remove-trial (:remaining-trials lesson) current-trial)
-                        (:remaining-trials lesson))
+                        (remove-trial (:remaining-trials state) current-trial)
+                        (:remaining-trials state))
         is-finished?  (and correct? (empty? remaining))
-        updated-lesson (assoc lesson
-                              :remaining-trials remaining
-                              :last-result      {:correct? correct? :correct-answer answer-text})]
+        updated-state (assoc state :remaining-trials remaining :last-result {:correct? correct?})]
     ;; Fire-and-forget: rotate example in background (don't block UI)
     (when (and correct?
                (example-trial? current-trial)
@@ -148,7 +142,7 @@
                (examples/online?))
       (-> (p/do
             (vocabulary/delete-example (-> word :example :id))
-            (examples/fetch-example (:value word)))
+            (examples/fetch-one word))
           (p/then
            (fn [new-example]
              (when new-example
@@ -159,31 +153,31 @@
       (when (word-trial? current-trial)
         (vocabulary/add-review (:id word) correct? (:translation word)))
       ;; Save updated lesson
-      (p/let [{:keys [rev]} (db/insert db updated-lesson)]
+      (p/let [{:keys [rev]} (db/insert db updated-state)]
         {:correct-answer answer-text
          :correct?     correct?
          :is-finished? is-finished?
-         :lesson       (assoc updated-lesson :_rev rev)}))))
+         :state        (assoc updated-state :_rev rev)}))))
 
 
-(defn advance-lesson!
+(defn advance!
   "Select the next random trial from remaining trials.
-   Returns the updated lesson, or nil if no more trials."
-  [lesson]
-  (let [remaining (:remaining-trials lesson)]
+   Returns the updated state, or nil if no more trials."
+  [state]
+  (let [remaining (:remaining-trials state)]
     (log/debug :advance-lesson/remaining remaining)
     (when (seq remaining)
-      (let [next-trial     (random-trial remaining)
-            updated-lesson (assoc lesson
-                                  :current-trial next-trial
-                                  :last-result   nil)]
-        (p/let [{:keys [rev]} (db/insert db updated-lesson)]
-          (log/debug :advance-lesson/updated-lesson updated-lesson)
-          (assoc updated-lesson :_rev rev))))))
+      (let [next-trial    (random-trial remaining)
+            updated-state (assoc state
+                                 :current-trial next-trial
+                                 :last-result   nil)]
+        (p/let [{:keys [rev]} (db/insert db updated-state)]
+          (log/debug :advance-lesson/updated-lesson updated-state)
+          (assoc updated-state :_rev rev))))))
 
 
-(defn finish-lesson!
+(defn finish!
   []
-  (p/let [existing (get-lesson)]
+  (p/let [existing (get-state)]
     (when existing
       (db/remove db existing))))

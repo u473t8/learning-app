@@ -25,7 +25,7 @@
   js/navigator.onLine)
 
 
-(defn fetch-example
+(defn fetch-one
   "Fetches an example sentence for the given German word from the backend.
    Returns a promise that resolves to the example map or nil on failure.
    Does not retry - relies on online events for retries at a higher level."
@@ -47,7 +47,7 @@
   "Fetches an example for a word and saves it if successful.
    Returns a promise that resolves to true if saved, false otherwise."
   [{:keys [id value]}]
-  (p/let [example (fetch-example value)]
+  (p/let [example (fetch-one value)]
     (when example
       (vocabulary/save-example id value example)
       (log/debug :fetch-and-save-example/saved {:word value}))
@@ -63,7 +63,7 @@
     (count (filter true? results))))
 
 
-(defn sync-examples!
+(defn sync!
   "Fetches examples for all vocabulary words that don't have one yet.
 
    Processing uses parallel batches (max-concurrent-fetches at a time) to:
