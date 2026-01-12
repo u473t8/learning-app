@@ -4,18 +4,6 @@
 
 We mostly follow the [Clojure Style Guide](https://guide.clojure.style/) with the additions listed below.
 
-## Automated Formatting
-
-Use `zprint` for automated code formatting. Project-specific rules are in `.zprint.edn`.
-
-```bash
-# Format a file
-zprint -w src/client/application.cljs
-
-# Format multiple files
-zprint -fw src/client/*.cljs
-```
-
 ## Additional Rules
 
 ### Namespace Aliases
