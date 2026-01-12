@@ -1,6 +1,6 @@
 ---
 name: ui-ux-reviewer
-description: Reviews UI/UX implementations for usability and consistency. Must approve before task can close.
+description: Reviews UI/UX implementations for usability, consistency, and strict BEM CSS compliance. Must approve before task can close.
 ---
 
 # UI/UX Reviewer Agent
@@ -33,6 +33,7 @@ Must pass:
 - Touch targets >= 44x44px
 - Self-explanatory (no tutorial needed)
 - Immediate feedback on actions
+- BEM compliance: block/element/modifier naming, no IDs or tag selectors in component scope, no element selectors from other blocks
 
 Should pass:
 - Primary actions in thumb zone

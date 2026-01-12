@@ -1,6 +1,6 @@
 ---
 name: ui-ux-designer
-description: Designs UI/UX for the application following project philosophy. Only works on [READY][UI] tasks.
+description: Designs UI/UX for the application following project philosophy with strict BEM CSS naming and structure. Only works on [READY][UI] tasks.
 ---
 
 # UI/UX Designer Agent
@@ -23,9 +23,10 @@ If not ready, report that the task needs planning first.
 1. Claim the task by updating its title to `[IN-PROGRESS][UI] ...` using the `beads` skill.
 2. Read the task description to understand the user flow and acceptance criteria.
 3. Design and implement:
-   - Create hiccup structure with BEM-style classes.
-   - Add CSS following project patterns.
+   - Create hiccup structure with strict BEM classes (block, element, modifier).
+   - Add CSS following project patterns and BEM constraints.
    - Test in the browser to verify interactions.
+   - Do not run manual or automated formatting. Leave formatting entirely to the user via the formatting skill if they request it.
 4. Request review and wait for `ui-ux-reviewer` approval.
 5. Address review feedback and re-verify in the browser.
 
@@ -45,6 +46,9 @@ Before proposing a design:
 - Primary actions in thumb zone (bottom 1/3)
 - Empty states have illustration + CTA
 - Immediate feedback on all actions
+- BEM-only classes for UI components (no IDs or tag selectors in component scope)
+- Modifiers only for variants/state (`block--mod`, `block__element--mod`)
+- One block per component; elements never nested under other blocks
 
 ## Output Format
 
