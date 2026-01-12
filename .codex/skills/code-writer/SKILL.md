@@ -25,8 +25,7 @@ If not ready, report that the task needs planning first.
 3. Implement:
    - Test functions in the REPL before writing.
    - Write code following project style.
-   - Do not format code manually or via a formatter; leave formatting to the planner workflow.
-   - Use the `format-clj` skill to format files. Never manually format Clojure code.
+   - Do not run manual or automated formatting. Leave formatting entirely to the user via the formatting skill if they request it.
 4. Request review and wait for `code-reviewer` approval.
 5. Address review feedback, re-test in REPL, and re-request review as needed.
 
