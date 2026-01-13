@@ -36,6 +36,7 @@ jobs:
           key: clojure-${{ hashFiles('deps.edn') }}
 
       - run: clojure -T:build uber
+      - run: cp target/learning-app.jar target/learning-app.jar.tmp
 
       - uses: actions/cache/save@v4
         with:
@@ -51,10 +52,9 @@ jobs:
           username: ${{ secrets.USER }}
           key: ${{ secrets.KEY }}
           strip_components: 1 # removes '/target' segment from the source path.
-          source: 'target/learning-app.jar'
+          source: 'target/learning-app.jar.tmp'
           target: '/opt/learning-app/'
           overwrite: true
-          rename: learning-app.jar.tmp
 
       - uses: appleboy/ssh-action@v1.0.3
         with:
@@ -63,4 +63,5 @@ jobs:
           key: ${{ secrets.KEY }}
           script: |
             set -euo pipefail
+            test -f /opt/learning-app/learning-app.jar.tmp
             mv -f /opt/learning-app/learning-app.jar.tmp /opt/learning-app/learning-app.jar
