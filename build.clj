@@ -29,14 +29,14 @@
   (println "Compiling files...")
   (b/compile-clj {:basis      @basis
                   :src-dirs   ["src"]
-                  :ns-compile '[sqlite.application-defined-functions learning-app]
+                  :ns-compile '[sqlite.application-defined-functions core]
                   :class-dir  class-dir})
 
   (println "Creating uber file...")
   (b/uber {:class-dir class-dir
            :uber-file uber-file
            :basis     @basis
-           :main      'learning-app})
+           :main      'core})
   (println (format "Uber file created: %s" uber-file)))
 
 
@@ -45,7 +45,7 @@
         class-path    (str/join ":" [uber-file])] ; Using ':' as classpath separator on Unix/Linux
     (println (format "Running '%s' with resources at '%s'" uber-file resources-dir))
     (let [process (-> (java.lang.ProcessBuilder.
-                       ["java" "--class-path" class-path "learning_app"])
+                       ["java" "--class-path" class-path "core"])
                       (.inheritIO)
                       (.start))]
       (.waitFor process))))

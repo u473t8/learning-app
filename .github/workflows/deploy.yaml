@@ -4,7 +4,10 @@ on:
     branches: [master]
     paths:
       - '.github/**'
+      - 'build.clj'
       - 'deps.edn'
+      - 'infra/**'
+      - 'resources/**'
       - 'src/**'
 
 jobs:
@@ -51,4 +54,13 @@ jobs:
           source: 'target/learning-app.jar'
           target: '/opt/learning-app/'
           overwrite: true
+          rename: learning-app.jar.tmp
 
+      - uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.KEY }}
+          script: |
+            set -euo pipefail
+            mv -f /opt/learning-app/learning-app.jar.tmp /opt/learning-app/learning-app.jar

@@ -20,9 +20,88 @@ hetzner.com
 
 ### Настройки Certbot
 ```sh
-sudo certbot --nginx -d spreha.de
+sudo certbot --nginx -d sprecha.de -d www.sprecha.de
 sudo certbot renew --dry-run
-``` 
+```
+
+### Автообновление сертификатов
+Используется systemd-таймер:
+
+```sh
+systemctl status learning-app-certbot.timer
+systemctl list-timers | grep learning-app-certbot
+```
+
+<br/><br/><br/>
+# Прод деплой: runbook
+
+## Fresh server bootstrap (Ubuntu)
+1) Базовые пакеты:
+```sh
+sudo apt-get update
+sudo apt-get install -y nginx systemd systemd-sysusers systemd-tmpfiles certbot borgbackup openjdk-21-jre-headless
+```
+
+2) Пользователь деплоя:
+```sh
+sudo adduser --disabled-password --gecos "" deployer
+sudo usermod -aG webdev deployer
+```
+
+3) SSH доступ для deployer:
+```sh
+sudo -u deployer mkdir -p /home/deployer/.ssh
+sudo -u deployer chmod 700 /home/deployer/.ssh
+sudo -u deployer touch /home/deployer/.ssh/authorized_keys
+sudo -u deployer chmod 600 /home/deployer/.ssh/authorized_keys
+sudo -u deployer sh -c 'echo "ssh-ed25519 AAAA... deployer@ci" >> /home/deployer/.ssh/authorized_keys'
+```
+
+4) Установить infra deb:
+```sh
+sudo dpkg -i learning-app-infra.deb
+```
+Postinst создаст системных пользователей, установит nginx конфиг, включит systemd юниты,
+и запросит секреты (Borg/OpenAI).
+
+5) Проверка сервисов:
+```sh
+systemctl status learning-app-run.service
+systemctl status learning-app-restart.path
+systemctl status learning-app-certbot.timer
+nginx -t
+```
+
+## Deploy (CI/CD pipeline)
+CI загружает `target/learning-app.jar` и делает atomic replace:
+```sh
+mv -f /opt/learning-app/learning-app.jar.tmp /opt/learning-app/learning-app.jar
+```
+Срабатывает `learning-app-restart.path`, который перезапускает `learning-app-run.service`.
+
+## Rollback
+```sh
+sudo systemctl stop learning-app-run.service
+sudo cp /opt/learning-app/learning-app.jar.backup /opt/learning-app/learning-app.jar
+sudo systemctl start learning-app-run.service
+```
+Перед новым деплоем сохраняйте `learning-app.jar.backup`.
+
+## Secret rotation: OpenAI token
+```sh
+sudo systemd-ask-password -n "Enter API key for OpenAI" \
+  | systemd-creds --name=openai_api_key encrypt - /etc/credstore.encrypted/openai_api_key
+sudo systemctl restart learning-app-run.service
+```
+
+## Preflight checklist (before merge/deploy)
+- `systemctl is-enabled learning-app-run.service`
+- `systemctl is-enabled learning-app-restart.path`
+- `systemctl is-enabled learning-app-certbot.timer`
+- `systemctl status learning-app-run.service`
+- `nginx -t`
+- `/opt/learning-app` writable by deployer (artifact upload)
+- `/etc/credstore.encrypted/openai_api_key` exists (or OPENAI_API_KEY env is set)
 
 
 <br/><br/><br/>
@@ -127,7 +206,7 @@ sudo chown webapp:webapp /var/log/learning-app
 # Сервисы
 
 ## Запуск приложения
-`/etc/systemd/system/learning-app.service`
+`/etc/systemd/system/learning-app-run.service`
 
 ```shell
 sudo systemctl daemon-reload
@@ -135,7 +214,7 @@ sudo systemctl start learning-app.service
 ```
 
 ### Переменные среды для приложения
-Переменные хранятся в `/etc/learning-app/env`
+Переменные хранятся в `/etc/learning-app/environment`
 - Абсолютный путь до базы
 - Абсолютный путь до приложения
 - Токен ChatGPT
@@ -156,9 +235,10 @@ Path unit [наблюдает](https://www.freedesktop.org/software/systemd/man/
  - [ ] Написать сервис.
 
 ## Обновление SSL сертификатов
-Сервиса нет.
+Сервис установлен в `/etc/systemd/system/learning-app-certbot.*` и запускается таймером.
 
-- [ ] Написать сервис.
+- `systemctl status learning-app-certbot.timer`
+- `systemctl list-timers | grep learning-app-certbot`
 
 
 
