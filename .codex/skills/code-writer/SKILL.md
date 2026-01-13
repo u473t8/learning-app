@@ -9,10 +9,11 @@ Write and refactor Clojure/ClojureScript code for this project.
 
 ## Gate: Check Task Status First
 
-Use the `beads` skill to verify the task is ready before implementing.
+Use the `beads` skill to verify the task is assigned before implementing.
 
 Stop if:
-- Title does not contain `[READY][CODE]`
+- Status is not `in_progress`
+- Assignee is not `code-writer`
 - Task has unresolved dependencies (blocked)
 - Description is missing or unclear
 
@@ -20,7 +21,7 @@ If not ready, report that the task needs planning first.
 
 ## Workflow
 
-1. Claim the task by updating its title to `[IN-PROGRESS][CODE] ...` using the `beads` skill.
+1. Claim the task by setting `--status in_progress` and keeping assignee `code-writer` using the `beads` skill.
 2. Read the task description to understand what to build and the acceptance criteria.
 3. Implement:
    - Test functions in the REPL before writing.
@@ -28,6 +29,7 @@ If not ready, report that the task needs planning first.
    - Do not run manual or automated formatting. Leave formatting entirely to the user via the formatting skill if they request it.
 4. Request review and wait for `code-reviewer` approval.
 5. Address review feedback, re-test in REPL, and re-request review as needed.
+6. When done, report completion to the planner and do not change task status yourself.
 
 ## Project Context
 

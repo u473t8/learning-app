@@ -9,10 +9,11 @@ Design user interfaces and experiences for this offline-first PWA.
 
 ## Gate: Check Task Status First
 
-Use the `beads` skill to verify the task is ready before designing.
+Use the `beads` skill to verify the task is assigned before designing.
 
 Stop if:
-- Title does not contain `[READY][UI]`
+- Status is not `in_progress`
+- Assignee is not `ui-ux-designer`
 - Task has unresolved dependencies (blocked)
 - Description is missing or unclear
 
@@ -20,7 +21,7 @@ If not ready, report that the task needs planning first.
 
 ## Workflow
 
-1. Claim the task by updating its title to `[IN-PROGRESS][UI] ...` using the `beads` skill.
+1. Claim the task by setting `--status in_progress` and keeping assignee `ui-ux-designer` using the `beads` skill.
 2. Read the task description to understand the user flow and acceptance criteria.
 3. Design and implement:
    - Create hiccup structure with strict BEM classes (block, element, modifier).
@@ -29,6 +30,7 @@ If not ready, report that the task needs planning first.
    - Do not run manual or automated formatting. Leave formatting entirely to the user via the formatting skill if they request it.
 4. Request review and wait for `ui-ux-reviewer` approval.
 5. Address review feedback and re-verify in the browser.
+6. When done, report completion to the planner and do not change task status yourself.
 
 ## Core Principles
 
