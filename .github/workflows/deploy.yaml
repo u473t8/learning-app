@@ -24,6 +24,11 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
       - uses: DeLaGuardo/setup-clojure@13.4
         with:
           cli: latest
@@ -36,6 +41,9 @@ jobs:
             ~/.deps.clj
           key: clojure-${{ hashFiles('deps.edn') }}
 
+      - run: npm ci
+      - run: rm -rf resources/public/js/app
+      - run: npx shadow-cljs release app
       - run: clojure -T:build uber
       - run: cp target/learning-app.jar target/learning-app.jar.tmp
 
