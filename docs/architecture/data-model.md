@@ -22,7 +22,7 @@ Fields:
 - translation: array of translation objects
 
 Translation object:
-- lang: string (e.g. "ru")
+- lang: string (e.g. "en")
 - value: string
 
 Example:
@@ -31,7 +31,7 @@ Example:
   "type": "vocab",
   "value": "der Hund",
   "lang": "de",
-  "translation": [{"lang": "ru", "value": "пёс"}]
+  "translation": [{"lang": "en", "value": "dog"}]
 }
 ```
 
@@ -52,7 +52,7 @@ Example:
   "word-id": "<vocab-id>",
   "retained": true,
   "timestamp": "2024-08-20T10:11:12.000Z",
-  "translation": [{"lang": "ru", "value": "пёс"}]
+  "translation": [{"lang": "en", "value": "dog"}]
 }
 ```
 
@@ -64,7 +64,7 @@ Fields:
 - word-id: string (references vocab document _id)
 - word: string (German word value used to request the example)
 - value: string (German sentence)
-- translation: string (Russian translation)
+- translation: string (English translation)
 - structure: array of structure objects
 - created-at: string (ISO-8601, client time)
 
@@ -80,10 +80,10 @@ Example:
   "word-id": "<vocab-id>",
   "word": "der Hund",
   "value": "Der Hund schlaeft unter dem Tisch.",
-  "translation": "Пёс спит под столом.",
+  "translation": "The dog sleeps under the table.",
   "structure": [
-    {"usedForm": "Hund", "dictionaryForm": "der Hund", "translation": "пёс"},
-    {"usedForm": "schlaeft", "dictionaryForm": "schlafen", "translation": "спать"}
+    {"usedForm": "Hund", "dictionaryForm": "der Hund", "translation": "dog"},
+    {"usedForm": "schlaeft", "dictionaryForm": "schlafen", "translation": "sleep"}
   ],
   "created-at": "2024-08-20T10:12:30.000Z"
 }
@@ -109,14 +109,14 @@ Fields:
 Lesson word object:
 - id: string (references vocab document _id)
 - value: string (German word)
-- translation: string (Russian translation)
+- translation: string (English translation)
 - retention-level: number
 - example: object (optional)
 
 Example object (embedded in word):
 - id: string (example document _id)
 - value: string (German sentence)
-- translation: string (Russian translation)
+- translation: string (English translation)
 - structure: array (see Example document)
 
 Trial object:
@@ -137,12 +137,12 @@ Example:
     {
       "id": "<vocab-id>",
       "value": "der Hund",
-      "translation": "пёс",
+      "translation": "dog",
       "retention-level": 42,
       "example": {
         "id": "<example-id>",
         "value": "Der Hund schlaeft unter dem Tisch.",
-        "translation": "Пёс спит под столом.",
+        "translation": "The dog sleeps under the table.",
         "structure": []
       }
     }
