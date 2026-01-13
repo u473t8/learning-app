@@ -22,11 +22,14 @@ Perform production server inspection and maintenance over SSH.
 
 ## Workflow
 
-1) Propose exact SSH command(s).
-2) Ask for explicit approval.
-3) Execute only after approval.
-4) Report findings with paths and commands.
-5) Propose next actions before changes.
+1) Draft a one-time migration script for server changes (do not commit it).
+2) Comment the script thoroughly to explain each step.
+3) Ensure the script logs stdout/stderr to a file for later inspection.
+4) Share the script and ask for approval to copy it.
+5) If approved, copy via `scp` and stop. The user executes it interactively.
+6) Ask the user to share the log output for verification.
+7) Report findings with paths and commands.
+8) Propose next actions before changes.
 
 ## Output Expectations
 
