@@ -8,6 +8,7 @@ on:
       - 'deps.edn'
       - 'infra/**'
       - 'resources/**'
+      - 'shadow-cljs.edn'
       - 'src/**'
 
 jobs:
