@@ -29,7 +29,6 @@
   {:target     :browser
    :output-dir "resources/public/js/app"
    :asset-path "/js/app"
-   :module-hash-names true
    :modules
    {:sw
     {:entries    [sw]
