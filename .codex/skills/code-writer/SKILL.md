@@ -39,7 +39,7 @@ Offline-first PWA learning application built with:
 - Service worker intercepting fetches and serving HTMX
 
 ## Reference Docs
-- `docs/code-style.md` - Style rules (naming, namespaces, threading)
-- `docs/coding-principles.md`
+- `docs/process/code-style.md` - Style rules (naming, namespaces, threading)
+- `docs/process/coding-principles.md`
 - `docs/philosophy.md`
-- `docs/data-model.md`
+- `docs/architecture/data-model.md`

@@ -28,7 +28,7 @@ Use this checklist when reviewing UI/UX implementations for Sprecha.
 - [ ] Adequate spacing between tap targets (≥ 8px)
 - [ ] No tiny close buttons or links
 
-### Thumb Zones (see `docs/thumb-zones.png`)
+### Thumb Zones (see `docs/ui/thumb-zones.png`)
 - [ ] Primary actions in bottom 1/3 of screen
 - [ ] Frequent actions reachable with one hand
 - [ ] Navigation at screen edges (top/bottom)

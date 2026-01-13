@@ -104,7 +104,7 @@ Demonstrate value before asking for commitment.
 ## Mobile-First Design
 
 ### Thumb Zones
-Reference: `docs/thumb-zones.png`
+Reference: `docs/ui/thumb-zones.png`
 
 - Primary actions in bottom 1/3 of screen
 - Navigation at bottom or top edges

@@ -48,7 +48,7 @@ Use these only when relevant:
 
 ### 5) Documentation is part of the change
 
-- Update `docs/server_configuration.md` and `docs/local-deploy.md` with any operational change.
+- Update `docs/ops/server-configuration.md` with any operational change.
 - Keep docs minimal but complete: commands, paths, and expectations.
 
 ### 6) Verify

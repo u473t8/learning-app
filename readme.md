@@ -30,7 +30,7 @@ dpkg-deb --build infra/production learning-app-infra.deb
 
 ## Development
 
-See [docs/development-setup.md](docs/development-setup.md) for the complete development setup guide.
+See [docs/dev/development-setup.md](docs/dev/development-setup.md) for the complete development setup guide.
 
 ### Quick Start
 

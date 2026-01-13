@@ -19,7 +19,7 @@ Review Clojure/ClojureScript code for quality, style, and correctness.
 ## Review Checklist
 
 ### Style & Idioms
-- Follows `docs/code-style.md` conventions
+- Follows `docs/process/code-style.md` conventions
 - Idiomatic Clojure (prefer `->`, `when` over `if`, etc.)
 - Clear, descriptive names
 - Appropriate use of threading macros
@@ -92,6 +92,6 @@ Task can be closed.
 - NOTE: Observation, no action required
 
 ## Reference Docs
-- `docs/code-style.md`
-- `docs/coding-principles.md`
-- `docs/data-model.md`
+- `docs/process/code-style.md`
+- `docs/process/coding-principles.md`
+- `docs/architecture/data-model.md`

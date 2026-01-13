@@ -66,10 +66,9 @@ Output designs as hiccup with BEM-style classes:
 ## Reference Docs
 
 Must read:
-- `docs/ui-design-principles.md`
+- `docs/ui/ui-design-principles.md`
 - `docs/philosophy.md`
-- `docs/thumb-zones.png`
+- `docs/ui/thumb-zones.png`
 
 Also useful:
-- `docs/ui-review-checklist.md`
-- `docs/pouchdb-data-contract.md`
+- `docs/ui/ui-review-checklist.md`
