@@ -13,17 +13,19 @@ You must test the implementation in the actual browser. Do not review code alone
 
 ## Review Process
 
-1. Open the page being reviewed.
-2. Take a snapshot to understand structure.
-3. Take a screenshot for visual inspection.
-4. Test interactions:
+1. Confirm the task status is `in_progress` and assignee is `ui-ux-designer` using the `beads` skill.
+2. Open the page being reviewed.
+3. Take a snapshot to understand structure.
+4. Take a screenshot for visual inspection.
+5. Test interactions:
    - Click all interactive elements
    - Fill forms with test data
    - Hover where applicable
    - Test long text (German/Russian words)
    - Test empty and error states
-5. Check console for errors or warnings.
-6. Apply the checklist in `docs/ui-review-checklist.md`.
+6. Check console for errors or warnings.
+7. Apply the checklist in `docs/ui-review-checklist.md`.
+8. Notify the planner of approval or required fixes; do not change task status.
 
 ## Quick Checks
 

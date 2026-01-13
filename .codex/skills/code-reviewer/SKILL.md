@@ -9,11 +9,12 @@ Review Clojure/ClojureScript code for quality, style, and correctness.
 
 ## Review Process
 
-1. Read the task description using the `beads` skill.
+1. Read the task description using the `beads` skill and confirm status is `in_progress` with assignee `code-writer`.
 2. Review all modified files.
 3. Run code in the REPL to verify behavior.
 4. Apply the checklist below.
 5. Report findings or approve.
+6. Notify the planner of approval or required fixes; do not change task status.
 
 ## Review Checklist
 
