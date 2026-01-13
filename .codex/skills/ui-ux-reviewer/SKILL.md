@@ -24,7 +24,7 @@ You must test the implementation in the actual browser. Do not review code alone
    - Test long text (German/Russian words)
    - Test empty and error states
 6. Check console for errors or warnings.
-7. Apply the checklist in `docs/ui-review-checklist.md`.
+7. Apply the checklist in `docs/ui/ui-review-checklist.md`.
 8. Notify the planner of approval or required fixes; do not change task status.
 
 ## Quick Checks
@@ -84,9 +84,9 @@ Task can be closed.
 ## Reference Docs
 
 Must read:
-- `docs/ui-review-checklist.md`
-- `docs/ui-design-principles.md`
+- `docs/ui/ui-review-checklist.md`
+- `docs/ui/ui-design-principles.md`
 
 Also useful:
 - `docs/philosophy.md`
-- `docs/thumb-zones.png`
+- `docs/ui/thumb-zones.png`

@@ -20,6 +20,5 @@ Use this file to jump to the authoritative configuration files. Load only what y
 
 ## Documentation
 
-- `docs/server_configuration.md`
-- `docs/local-deploy.md`
+- `docs/ops/server-configuration.md`
 - `readme.md`
