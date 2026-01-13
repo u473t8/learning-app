@@ -24,7 +24,7 @@ if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
 
   # 4. Remove credentials
   rm -f /etc/credstore.encrypted/borg-passphrase
-  rm -f /etc/credstore.encrypted/open-ai-key
+  rm -f /etc/credstore.encrypted/openai_api_key
 
   # 5. Remove users if exist, with their home directories
   if id webapp &>/dev/null; then

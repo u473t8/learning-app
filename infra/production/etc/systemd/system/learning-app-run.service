@@ -5,17 +5,18 @@ After=network.target
 [Service]
 Type=simple
 User=webapp
-WorkingDirectory=~
+WorkingDirectory=/opt/learning-app
 LogsDirectory=learning-app
 StateDirectory=learning-app
 Restart=always
 RestartSec=10
-ExecStart=sh -c "OPEN_AI_KEY=$(cat ${OPEN_AI_KEY_PATH}) java -jar learning-app.jar"
+ExecStart=sh -c "OPENAI_API_KEY=${OPENAI_API_KEY:-$(cat ${OPENAI_API_KEY_PATH})} java -jar /opt/learning-app/learning-app.jar"
 
 # Environment
-EnvironmentFile=/etc/learning-app/environment
-LoadCredentialEncrypted=open-ai-key:/etc/credstore.encrypted/open-ai-key
-Environment=OPEN_AI_KEY_PATH=%d/open-ai-key
+EnvironmentFile=-/etc/learning-app/environment
+EnvironmentFile=-/etc/environment.d/learning-app.conf
+LoadCredentialEncrypted=openai_api_key:/etc/credstore.encrypted/openai_api_key
+Environment=OPENAI_API_KEY_PATH=%d/openai_api_key
 
 # Security settings
 NoNewPrivileges=yes

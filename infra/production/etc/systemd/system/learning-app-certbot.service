@@ -1,0 +1,6 @@
+[Unit]
+Description=Renew Let's Encrypt certificates for Sprecha
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/certbot renew --quiet --deploy-hook "systemctl reload nginx"
