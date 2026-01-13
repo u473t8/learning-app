@@ -18,12 +18,31 @@ systemd-sysusers
 # Create directories
 systemd-tmpfiles --create
 
+# Prepare nginx SSL directory and certbot deploy hook.
+mkdir -p /etc/nginx/ssl/sprecha.de
+chown root:root /etc/nginx/ssl/sprecha.de
+chmod 700 /etc/nginx/ssl/sprecha.de
+
+if [ -f /etc/letsencrypt/renewal-hooks/deploy/learning-app-nginx.sh ]; then
+    chmod 700 /etc/letsencrypt/renewal-hooks/deploy/learning-app-nginx.sh
+fi
+
 # Enable and start nginx config
 nginx -t && systemctl reload nginx || systemctl start nginx
 
 # Issue Let's Encrypt certificates interactively
 if ! certbot certificates | grep -q sprecha.de; then
     certbot --nginx -d sprecha.de -d www.sprecha.de
+fi
+
+# Ensure nginx uses root-only cert paths when certs exist.
+if [ -f /etc/nginx/sites-available/learning-app.conf ]; then
+    sed -i 's#/etc/letsencrypt/live/sprecha.de/fullchain.pem#/etc/nginx/ssl/sprecha.de/fullchain.pem#g' /etc/nginx/sites-available/learning-app.conf
+    sed -i 's#/etc/letsencrypt/live/sprecha.de/privkey.pem#/etc/nginx/ssl/sprecha.de/privkey.pem#g' /etc/nginx/sites-available/learning-app.conf
+fi
+
+if [ -f /etc/letsencrypt/live/sprecha.de/fullchain.pem ]; then
+    /etc/letsencrypt/renewal-hooks/deploy/learning-app-nginx.sh
 fi
 
 # Enable and start application services

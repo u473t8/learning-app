@@ -9,16 +9,42 @@
 # Nginx
 
 ## Config
-The site config lives at `/etc/nginx/sites-available/learning-app.conf`.
+The canonical site config lives at `/etc/nginx/sites-available/learning-app.conf` and should be
+symlinked to `/etc/nginx/sites-enabled/learning-app.conf`.
 
 ## SSL certificate
-We use Let's Encrypt.
+We use Let's Encrypt with a deploy hook that copies certs into a root‑only nginx directory.
 
 ### Certbot
 ```sh
 sudo certbot --nginx -d sprecha.de -d www.sprecha.de
 sudo certbot renew --dry-run
 ```
+
+### Nginx cert path (root-only)
+Nginx must read certs from `/etc/nginx/ssl/sprecha.de/`:
+
+```
+ssl_certificate     /etc/nginx/ssl/sprecha.de/fullchain.pem;
+ssl_certificate_key /etc/nginx/ssl/sprecha.de/privkey.pem;
+```
+
+**Why this exists**
+- Certbot writes nginx configs that point to `/etc/letsencrypt/live/...`.
+- Those files are root-owned and too permissive to expose to worker users.
+- We keep a root-only directory for nginx and copy certs there on every renewal.
+
+**Nginx processes and key access**
+- Nginx runs a **master process** as root and forks **worker processes** (usually `www-data`).
+- The master reads the TLS private key at startup/reload; workers handle client traffic.
+- Workers are exposed to untrusted input, so if a worker is compromised it could leak any readable key.
+- The master has a smaller attack surface and does not handle requests directly, so keeping the key root-only limits exposure.
+
+**How it is automated**
+- The infra deb installs a deploy hook that copies certs from `/etc/letsencrypt/live/sprecha.de`
+  into `/etc/nginx/ssl/sprecha.de` and reloads nginx.
+- The deb postinst rewrites nginx SSL paths from `/etc/letsencrypt/live/...` to
+  `/etc/nginx/ssl/sprecha.de/...` so certbot’s default config is corrected after issuance.
 
 ### Auto-renewal
 Systemd timer:
@@ -31,13 +57,7 @@ systemctl list-timers | grep learning-app-certbot
 # Production deploy: runbook
 
 ## Fresh server bootstrap (Ubuntu)
-1) Base packages:
-```sh
-sudo apt-get update
-sudo apt-get install -y nginx systemd systemd-sysusers systemd-tmpfiles certbot borgbackup openjdk-21-jre-headless
-```
-
-2) Deployer user:
+1) Deployer user:
 ```sh
 sudo adduser --disabled-password --gecos "" deployer
 ```
@@ -51,13 +71,13 @@ sudo -u deployer chmod 600 /home/deployer/.ssh/authorized_keys
 sudo -u deployer sh -c 'echo "ssh-ed25519 AAAA... deployer@ci" >> /home/deployer/.ssh/authorized_keys'
 ```
 
-4) Install infra deb:
+2) Install infra deb:
 ```sh
-sudo dpkg -i learning-app-infra.deb
+sudo dpkg -i learning-app-infra.deb || sudo apt-get -f install
 ```
-Postinst creates system users, installs nginx config, enables systemd units, and prompts for secrets (Borg/OpenAI).
+Postinst creates system users, installs nginx config, sets up certbot hook + timer, enables systemd units, and prompts for secrets (Borg/OpenAI).
 
-5) Service checks:
+3) Service checks:
 ```sh
 systemctl status learning-app-run.service
 systemctl status learning-app-restart.path
