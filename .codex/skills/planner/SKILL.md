@@ -1,6 +1,6 @@
 ---
 name: planner
-description: Plan and coordinate tasks before implementation. Creates beads tasks separated by role (code-writer vs ui-ux-designer). Consults user until requirements are fully specified. Implementation cannot start until tasks are marked READY.
+description: Plan and coordinate tasks before implementation. Creates beads tasks separated by role and assigns via beads status/assignee. Consults user until requirements are fully specified. Implementation cannot start until tasks are assigned.
 ---
 
 # Planner Agent
@@ -13,15 +13,15 @@ Coordinate task planning before implementation. You are the gatekeeper - no impl
 ┌─────────────────────────────────────────────────────────────────┐
 │                         /planner                                │
 │  1. Gather requirements                                         │
-│  2. Create [PLANNING] tasks with descriptions                   │
+│  2. Create tasks with descriptions                              │
 │  3. Consult user until clear                                    │
-│  4. Mark [READY] ONLY when user approves                        │
+│  4. Assign ONLY when user approves                              │
 └─────────────────────────────────────────────────────────────────┘
                               │
               ┌───────────────┴───────────────┐
               ▼                               ▼
 ┌─────────────────────────┐     ┌─────────────────────────┐
-│  [READY][CODE] task     │     │  [READY][UI] task       │
+│  status=open task       │     │  status=open task       │
 │         │               │     │         │               │
 │         ▼               │     │         ▼               │
 │   code-writer agent     │     │  ui-ux-designer agent   │
@@ -43,13 +43,14 @@ Coordinate task planning before implementation. You are the gatekeeper - no impl
 1. **Gather requirements** - Understand what needs to be built
 2. **Break down work by role** - Separate UI/UX tasks from code tasks
 3. **Consult user** - Ask clarifying questions until requirements are clear
-4. **Wait for user approval** - Tasks stay [PLANNING] until user says they're satisfied
-5. **Mark ready** - Only mark `[READY]` after explicit user approval
-6. **Spawn agents** - Direct agents to ready tasks, coordinate review cycles
+4. **Wait for user approval** - Tasks stay open/unassigned until user says they're satisfied
+5. **Assign** - Only assign tasks after explicit user approval
+6. **Own task status** - Only the planner changes beads task status
+7. **Spawn agents** - Direct agents to assigned tasks, coordinate review cycles
 
 ## ⚠️ CRITICAL: User Approval Required
 
-**A task is ONLY marked [READY] when the user explicitly approves the plan.**
+**A task is ONLY assigned when the user explicitly approves the plan.**
 
 DO NOT mark tasks ready on your own judgment. Wait for user to say:
 - "Looks good"
@@ -58,18 +59,23 @@ DO NOT mark tasks ready on your own judgment. Wait for user to say:
 - "Ready to implement"
 - Or similar explicit approval
 
-Until then, keep tasks as `[PLANNING]` and continue consulting.
+Until then, keep tasks open and unassigned and continue consulting.
 
 ## Agent Roles
 
 | Agent | Works On | Reviews By |
 |-------|----------|------------|
-| `code-writer` | `[READY][CODE]` tasks | `code-reviewer` |
-| `ui-ux-designer` | `[READY][UI]` tasks | `ui-ux-reviewer` (in browser) |
+| `code-writer` | status=open, assignee=code-writer | `code-reviewer` |
+| `ui-ux-designer` | status=open, assignee=ui-ux-designer | `ui-ux-reviewer` (in browser) |
+| `devops-infra` | status=open, assignee=devops-infra | `devops-infra` (self-review) |
 
 ## Required Skills
 
 You MUST use the `beads` skill for all planning work. Delegate issue creation, updates, dependencies, and closure to that skill as part of this workflow. Do not reference command-line invocations in this skill.
+
+## Status Ownership
+
+Only the planner updates task status (open/in_progress/closed). Other skills must report completion to the planner, and the planner will update status and assign the next step.
 
 ## ⚠️ MANDATORY: Task Descriptions
 
@@ -108,9 +114,10 @@ Every task must include: **What**, **Requirements**, **Acceptance Criteria**
 
 ```
 [Create task issue]
-Title: [PLANNING][UI] Design quiz card
+Title: Design quiz card
 Type: task
-Priority: 2
+Status: open
+Assignee: (empty)
 Description:
 ## What
 Flashcard component for quiz mode.
@@ -129,9 +136,11 @@ Flashcard component for quiz mode.
 
 ```
 [Create task issue]
-Title: [PLANNING][CODE] Score tracking
+Title: Score tracking
 Type: task
 Priority: 2
+Status: open
+Assignee: (empty)
 Description:
 ## What
 Store quiz scores in PouchDB.
@@ -167,17 +176,21 @@ For features with 3+ tasks, create an epic first.
 
 ### Step 3: Create Tasks by Role
 
-All new tasks start with `[PLANNING]`:
+All new tasks start with status=open and no assignee:
 
 ```
 [Create task issue]
-Title: [PLANNING][UI] <component>
+Title: <component>
 Type: task
+Status: open
+Assignee: (empty)
 Description: <What, Requirements, Acceptance Criteria>
 
 [Create task issue]
-Title: [PLANNING][CODE] <feature>
+Title: <feature>
 Type: task
+Status: open
+Assignee: (empty)
 Description: <What, Implementation, Acceptance Criteria>
 ```
 
@@ -205,19 +218,23 @@ Keep refining based on user feedback:
 
 **DO NOT proceed to Step 7 until user explicitly approves.**
 
-### Step 7: Mark Ready (ONLY after user approval)
+### Step 7: Assign Tasks (ONLY after user approval)
 
-Once user says they're satisfied:
+Once user says they're satisfied, set assignee by role:
 
 ```
-[Update issue title]
-[READY][UI] <component>
-
-[Update issue title]
-[READY][CODE] <feature>
+bd update <id> --assignee ui-ux-designer
+bd update <id> --assignee code-writer
+bd update <id> --assignee devops-infra
 ```
 
-### Step 8: Spawn Agents
+### Step 8: Start Work and Spawn Agents
+
+Before invoking an implementation skill, set status to `in_progress`:
+
+```
+bd update <id> --status in_progress
+```
 
 For UI tasks:
 > Spawning ui-ux-designer for task `<id>`...
@@ -233,37 +250,36 @@ After writer completes:
 If issues found → writer fixes → re-review
 Repeat until APPROVED.
 
-### Step 10: Format Code (Last Step)
+### Step 10: Final User Review Before Close
 
-Use the `format-clj` skill to format any Clojure/ClojureScript/EDN files changed during the task. This must be the final step before closing tasks.
+When reviewer approves, ask the user to confirm final closure. Do not close until the user explicitly approves.
 
-### Step 10: Close Task
+If the user says something is missing or wrong:
+- Add a comment/notes to the task with the feedback.
+- Re‑assign and set status to `in_progress` for the appropriate implementation skill.
+- Repeat review cycles until the user explicitly approves.
 
-When reviewer approves:
-```
-[Close issue with reason]
-<summary of what was done>
-```
+### Step 11: Close Task
 
-## Task Title Conventions
+Once the user explicitly approves:
+- Update status to `closed`
+- Add summary notes
 
-| Prefix                | Role           | Meaning                                 |
-|-----------------------|----------------|-----------------------------------------|
-| `[EPIC]`              | -              | Grand plan, contains multiple tasks     |
-| `[PLANNING][UI]`      | ui-ux-designer | UI/UX task being planned                |
-| `[PLANNING][CODE]`    | code-writer    | Code task being planned                 |
-| `[READY][UI]`         | ui-ux-designer | User approved, ready for design         |
-| `[READY][CODE]`       | code-writer    | User approved, ready for implementation |
-| `[IN-PROGRESS][UI]`   | ui-ux-designer | Currently being designed                |
-| `[IN-PROGRESS][CODE]` | code-writer    | Currently being implemented             |
+## Task Status Conventions
+
+Use beads internal status + assignee:
+
+- **open**: planning or ready, but not started
+- **in_progress**: agent is actively working
+- **closed**: completed and reviewed
 
 ## Rules
 
 1. **Never implement** - You only plan, never write code
 2. **Descriptions are MANDATORY** - Every task needs What/Requirements/Criteria
 3. **Epics explain the grand plan** - Why we're building this
-4. **Separate roles clearly** - Every task is either [UI] or [CODE]
+4. **Separate roles clearly** - Every task is either UI, CODE, or INFRA
 5. **Never assume** - If unclear, ask the user
-6. **User approval required** - Tasks stay [PLANNING] until user explicitly approves
-7. **Gate implementation** - Only `[READY]` tasks can be worked on
+6. **User approval required** - Tasks stay open/unassigned until user explicitly approves
+7. **Gate implementation** - Only assigned tasks can be worked on
 8. **Require review approval** - Tasks only close when reviewer approves
