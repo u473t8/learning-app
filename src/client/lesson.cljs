@@ -147,6 +147,17 @@
            (fn [new-example]
              (when new-example
                (vocabulary/save-example (:id word) (:value word) new-example))))))
+
+    ;; Fire-and-forget: generate missing example after successful word trial
+    (when (and correct?
+               (word-trial? current-trial)
+               (nil? (:example word))
+               (examples/online?))
+      (-> (examples/fetch-one (:value word))
+          (p/then
+           (fn [new-example]
+             (when new-example
+               (vocabulary/save-example (:id word) (:value word) new-example))))))
     ;; Main flow: save lesson and return result
     (p/do
       ;; Create review document (only for word trials)
