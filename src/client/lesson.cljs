@@ -142,7 +142,7 @@
                (examples/online?))
       (-> (p/do
             (vocabulary/delete-example (-> word :example :id))
-            (examples/fetch-one word))
+            (examples/fetch-one (:value word)))
           (p/then
            (fn [new-example]
              (when new-example
