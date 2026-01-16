@@ -568,7 +568,7 @@
 
     {:data {:interceptors [(parameters/parameters-interceptor)
                            (keyword-parameters/keyword-parameters-interceptor)
-                           (hiccup/interceptor)
+                           (hiccup/interceptor {:layout-fn nil})
                            page-layout-interceptor]}})
 
    (constantly {:status 404 :body ""})
