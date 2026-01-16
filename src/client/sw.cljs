@@ -115,7 +115,8 @@
   [request]
   (let [request    (.clone request)
         url-object (js/URL. (.-url request))
-        headers    (-> request .-headers .entries js/Object.fromEntries js->clj)]
+        headers    (-> request .-headers .entries js/Object.fromEntries js->clj)
+        headers    (update-keys headers str/lower-case)]
     {:server-port (.-port url-object)
      :server-name (.-hostname url-object)
      :uri (.-pathname url-object)
