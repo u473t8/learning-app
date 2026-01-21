@@ -5,10 +5,10 @@
   (:require
    [application :as application]
    [clojure.string :as str]
-   [examples :as examples]
    [lambdaisland.glogi :as log]
    [lambdaisland.glogi.console :as glogi-console]
    [promesa.core :as p]
+   [tasks :as tasks]
    [utils :as utils]))
 
 
@@ -65,16 +65,7 @@
     (waitUntil
      (p/do
        (js/self.clients.claim)
-       ;; Sync examples when service worker activates (app startup)
-       (when (examples/online?)
-         (examples/sync!)))))))
-
-
-(js/self.addEventListener
- "online"
- (fn [_event]
-   (log/info :event/online "Browser came online, syncing examples")
-   (examples/sync!)))
+       (tasks/start!))))))
 
 
 (js/self.addEventListener
@@ -83,6 +74,12 @@
    (when (= "ping" (.. event -data -type))
      (some-> (.-source event)
              (.postMessage #js {:type "pong"})))))
+
+
+(js/self.addEventListener
+ "online"
+ (fn [_event]
+   (tasks/resume!)))
 
 
 (defn- static-request?

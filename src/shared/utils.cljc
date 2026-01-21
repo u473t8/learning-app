@@ -2,10 +2,7 @@
   (:require
    #?(:clj
       [ring.util.codec :as codec])
-   [clojure.string :as str])
-  #?(:clj
-     (:import
-      [java.time Instant])))
+   [clojure.string :as str]))
 
 
 (defn build-url
@@ -22,11 +19,6 @@
        (let [query-params (js/URLSearchParams. (clj->js query-params))]
          (str path "?" query-params)))))
 
-#?(:cljs
-   (defn fire-and-forget!
-     [f]
-     (js/setTimeout f 0)))
-
 
 (comment
   (build-url "/base" {:a 1})     ;; => "/base?a=1"
@@ -36,7 +28,7 @@
   (build-url "/base" {:c nil})   ;; => "/base"
   (build-url "/base" {})         ;; => "/base"
   (build-url "/base" nil)        ;; => "/base"
-  )
+)
 
 
 (defn prozent->color
@@ -73,39 +65,55 @@
     (str/includes? word pattern)))
 
 
-(defn timestamp:instant->unix
-  [instant]
-  #?(:clj   (.getTime ^java.util.Date instant)
-     :cljs  (.getTime instant)))
-
-
-(defn timestamp:iso->unix
-  [iso]
-  #?(:clj
-     (.getEpochSecond (Instant/parse iso))
-     :cljs
-     (quot (js/Date.parse iso) 1000)))
-
-
-(defn now
-  []
-  #?(:clj  (java.util.Date.)
-     :cljs (js/Date.)))
-
-
-(defn now-iso
-  []
-  #?(:cljs (.toISOString (now))))
-
-
-(defn now-unix
-  []
-  #?(:cljs (quot (js/Date.now) 1000)))
-
-
 (defn non-blank
   [string]
   (when-not (str/blank? string)
     string))
+
+
+;; =============================================================================
+;; Time - Current
+;; =============================================================================
+
+
+(defn now-ms
+  "Returns current time as milliseconds since epoch."
+  []
+  #?(:clj  (System/currentTimeMillis)
+     :cljs (js/Date.now)))
+
+
+(defn now-iso
+  "Returns current time as ISO-8601 string."
+  []
+  #?(:clj  (.toString (java.time.Instant/now))
+     :cljs (.toISOString (js/Date.))))
+
+
+;; =============================================================================
+;; Time - Conversions (all use milliseconds as base unit)
+;; =============================================================================
+
+
+(defn ms->iso
+  "Converts milliseconds to ISO-8601 string."
+  [ms]
+  #?(:clj  (.toString (java.time.Instant/ofEpochMilli ms))
+     :cljs (.toISOString (js/Date. ms))))
+
+
+(defn iso->ms
+  "Converts ISO-8601 string to milliseconds."
+  [iso]
+  #?(:clj  (.toEpochMilli (java.time.Instant/parse iso))
+     :cljs (js/Date.parse iso)))
+
+
+(defn date->ms
+  "Converts Date object to milliseconds."
+  [date]
+  #?(:clj  (.getTime ^java.util.Date date)
+     :cljs (.getTime date)))
+
 
 

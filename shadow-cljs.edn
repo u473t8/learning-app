@@ -26,7 +26,7 @@
 
  :builds
  {:app
-  {:target     :browser
+  {:target :browser
    :output-dir "resources/public/js/app"
    :asset-path "/js/app"
    :modules
@@ -35,13 +35,13 @@
      :web-worker true}}
    :devtools
    {:devtools-url "https://sprecha.local/shadow-cljs"
-    :preloads [debux.preloads]
-    :watch-dir  "resources/public/css"
-    :watch-path "/css"}
-   :release-stubs #{debux.core}}}
+    :preloads     [debux.preloads]
+    :watch-dir    "resources/public/css"
+    :watch-path   "/css"}
+   :release-stubs #{debux.core}}
 
   :test
   {:target    :node-test
    :output-to "target/node-tests.js"
    :autorun   true
-   :ns-regexp "-test$"}}
+   :ns-regexp "-test$"}}}

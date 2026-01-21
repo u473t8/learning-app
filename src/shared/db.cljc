@@ -14,6 +14,7 @@
    [clojure.string :as str]
    [promesa.core :as p]))
 
+
 #?(:cljs (.plugin PouchDB PouchFind))
 
 (def conn
@@ -59,11 +60,16 @@
                        :else x)))]
     (f x)))
 
+
+(defn kebab->snake
+  [k]
+  (str/replace (name k) #"-" "_"))
+
+
 (defn clj->couch
   "Recursively transforms Clojure structure into CouchDB document."
   [x]
-  (let [keyfn (fn [k]
-                (str/replace (name k) #"-" "_"))]
+  (let [keyfn kebab->snake]
     #?(:clj (walk/prewalk (fn [x]
                             (cond-> x
                               (map? x) (update-keys keyfn))) x)
@@ -76,69 +82,74 @@
                               (aset m (keyfn k) (clj->couch v)))
                             m)
                  (coll? x) (let [arr (array)]
-                             (doseq [x (map clj->js x)]
+                             (doseq [x (map clj->couch x)]
                                (.push arr x))
                              arr)
                  :else x)))))
 
+
 #?(:clj
-   (defn request-sync
-     "opts:
+     (defn request-sync
+       "opts:
       - `url`
       - `method`
       - `headers`
       - `query-params`
       - `body`
       - `basic-auth`"
-     [opts]
-     (client/request
-      (-> opts
-          ;; Serialize body
-          (update :body cheshire/generate-string)
-          ;; Compose the full url
-          (update :url #(str (:scheme conn) "://" (:host conn) ":" (:port conn) "/" %))
-          ;; Use basic authorization
-          (assoc :basic-auth [(:username conn) (:password conn)])
-          ;; Conver query params to snake_case
-          (update :query-params update-keys clj->couch))
-      (fn [{:keys [headers] :as response}]
-        (cond-> response ; Deserialize JSON body
-          (str/includes? (:content-type headers) "application/json")
-          (update :body cheshire/parse-string keyword))))))
+       [opts]
+       (client/request
+        (-> opts
+            ;; Serialize body
+            (update :body cheshire/generate-string)
+            ;; Compose the full url
+            (update :url #(str (:scheme conn) "://" (:host conn) ":" (:port conn) "/" %))
+            ;; Use basic authorization
+            (assoc :basic-auth [(:username conn) (:password conn)])
+            ;; Conver query params to snake_case
+            (update :query-params update-keys clj->couch))
+        (fn [{:keys [headers] :as response}]
+          (cond-> response ; Deserialize JSON body
+            (str/includes? (:content-type headers) "application/json")
+            (update :body cheshire/parse-string keyword))))))
+
 
 #?(:clj
-   (defn request
-     "opts:
+     (defn request
+       "opts:
       - `url`
       - `method`
       - `headers`
       - `query-params`
       - `body`
       - `basic-auth`"
-     [opts]
-     (p/create
-      (fn [resolve reject]
-        (let [response (request-sync opts)]
-          (if (-> response (:status 0) (< 400))
-            (resolve (:body response))
-            (reject response)))))))
+       [opts]
+       (p/create
+        (fn [resolve reject]
+          (let [response (request-sync opts)]
+            (if (-> response (:status 0) (< 400))
+              (resolve (:body response))
+              (reject response)))))))
+
 
 #?(:clj
-   (defn exists?
-     "Returns true if database exists.
+     (defn exists?
+       "Returns true if database exists.
 
       `dbname` (*string*) - name of the database"
-     [dbname]
-     (let [response (request-sync {:method :head, :url dbname})]
-       (not= (:status response) 404))))
+       [dbname]
+       (let [response (request-sync {:method :head :url dbname})]
+         (not= (:status response) 404))))
+
 
 #?(:clj
-   (defn create
-     [dbname]
-     (let [response (request-sync {:method :put, :url dbname})]
-       (case (:status response)
-         (201 202) (-> response :body :ok)
-         (raise "DB was not created" (:body response))))))
+     (defn create
+       [dbname]
+       (let [response (request-sync {:method :put :url dbname})]
+         (case (:status response)
+           (201 202) (-> response :body :ok)
+           (raise "DB was not created" (:body response))))))
+
 
 (defn use
   "Creates a database or opens an existing one.
@@ -147,12 +158,13 @@
   `dbname` (*string*) - name of the database "
   [dbname]
   #?(:clj
-     (do
-       (when-not (exists? dbname)
-         (create dbname))
-       {:name dbname})
+       (do
+         (when-not (exists? dbname)
+           (create dbname))
+         {:name dbname})
      :cljs
-     (PouchDB. dbname)))
+       (PouchDB. dbname)))
+
 
 (defmacro with-couch-op
   [op-id body]
@@ -254,8 +266,9 @@
    (get db docname {}))
   ([db docname params]
    (with-couch-op :couch/get
-     #?(:clj (request {:method :get, :url (str (:name db) "/" docname), :query-params (clj->couch params)})
-        :cljs (.get db docname (clj->couch params))))))
+     #?(:clj (request {:method :get :url (str (:name db) "/" docname) :query-params (clj->couch params)})
+        :cljs (.get ^js db docname (clj->couch params))))))
+
 
 (defn find
   "Find documents using a declarative JSON querying syntax.
@@ -298,8 +311,23 @@
    - `bookmark` (*string*) – An opaque string used for paging. See the bookmark field in the request (above) for usage details."
   [db query]
   (with-couch-op :couch/find
-    #?(:clj (request {:method :get, :url (str (:name db) "/_find"), :body (clj->couch query)})
-       :cljs (.find db (clj->couch query)))))
+    #?(:clj (request {:method :get :url (str (:name db) "/_find") :body (clj->couch query)})
+       :cljs (.find ^js db (clj->couch query)))))
+
+
+(defn create-index
+  "Create a PouchDB secondary index.
+
+  `fields` (*vector*) - fields for the index definition
+  `opts` (*map*) - optional options passed to the index API"
+  ([db fields]
+   (create-index db fields {}))
+  ([db fields opts]
+   (let [fields (map kebab->snake fields)]
+     (with-couch-op :couch/create-index
+       #?(:clj (p/rejected "not implemented yet")
+          :cljs (.createIndex ^js db (clj->couch (merge {:index {:fields fields}} opts))))))))
+
 
 (defn remove
   "Marks the specified document as deleted by adding a field `_deleted` with the value true.
@@ -318,15 +346,17 @@
   ([db doc rev params]
    (let [rev (or (:_rev doc) (:rev params) rev)]
      (with-couch-op :couch/remove
-       #?(:clj (request {:method :delete, :url (str (:name db) "/" (:_id doc)), :query-params {:rev rev}})
-          :cljs (.remove db (clj->couch (assoc doc :_rev rev))))))))
+       #?(:clj (request {:method :delete :url (str (:name db) "/" (:_id doc)) :query-params {:rev rev}})
+          :cljs (.remove ^js db (clj->couch (assoc doc :_rev rev))))))))
+
 
 (defn all-docs
   "Fetch multiple documents, indexed and sorted by the `_id`."
   [db]
   (with-couch-op :couch/all-docs
     #?(:clj (p/rejected "not implemented yet")
-       :cljs (.allDocs db))))
+       :cljs (.allDocs ^js db))))
+
 
 (defn bulk-docs
   "Create, update or delete multiple documents. The `docs` argument is an array of documents.
@@ -338,7 +368,8 @@
   [db docs]
   (with-couch-op :couch/bulk-docs
     #?(:clj (p/rejected "not implemented yet")
-       :cljs (.bulkDocs db (clj->couch docs)))))
+       :cljs (.bulkDocs ^js db (clj->couch docs)))))
+
 
 (defn bulk-delete
   "Delete each document `_id`/`_rev` combination within the submitted structure `docs` structures."
@@ -346,12 +377,14 @@
   (let [docs (map #(assoc % :_deleted true) docs)]
     (bulk-docs db docs)))
 
+
 (defn purge
   "Purges a specific revision of a document, specified by `doc-id` and `rev`. `rev` must be a leaf revision."
   [db doc-id rev]
   (with-couch-op :couch/purge
     #?(:clj (p/rejected "not implemented yet")
-       :cljs (.purge db doc-id rev))))
+       :cljs (.purge ^js db doc-id rev))))
+
 
 #?(:cljs
    (defn sync
@@ -359,7 +392,7 @@
       (sync db {}))
      ([db {:keys [remote-url live retry backoff-ms]
            :or {live true retry true backoff-ms 60000}}]
-      (let [dbname (.-name db)
+      (let [dbname (.-name ^js db)
             remote (or remote-url
                        (str (.. js/globalThis -location -origin) "/db/" dbname))
             opts #js {:live live
@@ -368,7 +401,8 @@
                       (fn [delay]
                         (let [next (if (zero? delay) 1000 (min backoff-ms (* 2 delay)))]
                           next))}]
-        (PouchDB/sync (.-name db) remote opts)))))
+        (PouchDB/sync dbname remote opts)))))
+
 
 (comment
 
