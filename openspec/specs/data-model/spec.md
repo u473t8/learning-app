@@ -1,6 +1,5 @@
 ## Purpose
 The data model spec defines the required document shapes stored in the local database.
-
 ## Requirements
 ### Requirement: Vocabulary documents are stored
 The system SHALL store vocabulary documents with translations and ISO 8601 timestamps for creation and modification.
@@ -61,12 +60,12 @@ Example:
 ```
 
 ### Requirement: Lesson documents are stored
-The system SHALL store lesson documents as denormalized trials without a words list.
+The system SHALL store lesson documents with an options object containing configuration settings.
 
-#### Scenario: Lesson document shape
+#### Scenario: Lesson document with options
 - **WHEN** a lesson is stored
-- **THEN** it includes `type`, `started-at`, `trials`, `remaining-trials`, `current-trial`, and `last-result`
-- **AND** `last-result` includes the user `answer`
+- **THEN** the document includes `type`, `started-at`, `options`, `trials`, `remaining-trials`, `current-trial`, and `last-result`
+- **AND** `options` includes `trial-selector` with values `"first"` or `"random"`
 
 Example:
 ```json
@@ -74,26 +73,23 @@ Example:
   "_id": "lesson",
   "type": "lesson",
   "started-at": "2026-01-20T10:00:00.000Z",
+  "options": {
+    "trial-selector": "random"
+  },
   "trials": [
     {
       "type": "word",
       "word-id": "<vocab-id>",
       "prompt": "dog",
       "answer": "der Hund"
-    },
-    {
-      "type": "example",
-      "word-id": "<vocab-id>",
-      "prompt": "The dog sleeps.",
-      "answer": "Der Hund schlaeft."
     }
   ],
   "remaining-trials": [
     {
-      "type": "example",
+      "type": "word",
       "word-id": "<vocab-id>",
-      "prompt": "The dog sleeps.",
-      "answer": "Der Hund schlaeft."
+      "prompt": "dog",
+      "answer": "der Hund"
     }
   ],
   "current-trial": {
@@ -102,11 +98,7 @@ Example:
     "prompt": "dog",
     "answer": "der Hund"
   },
-  "last-result": {
-    "correct?": true,
-    "correct-answer": "der Hund",
-    "answer": "der hund"
-  }
+  "last-result": null
 }
 ```
 
@@ -167,4 +159,12 @@ Example:
   "failed-at": "2026-01-20T10:06:00.000Z"
 }
 ```
+
+### Requirement: Lesson trial selection uses options
+The system SHALL use the trial-selector from lesson options to determine trial selection behavior.
+
+#### Scenario: Trial selection with options
+- **WHEN** selecting trials for a lesson
+- **THEN** the selection uses the `trial-selector` value from `options`
+- **AND** defaults to `"random"` if options or trial-selector is missing
 

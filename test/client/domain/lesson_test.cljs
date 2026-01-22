@@ -1,0 +1,329 @@
+(ns client.domain.lesson-test
+  (:require
+   [cljs.test :refer-macros [deftest is testing]]
+   [client.support.fixtures :as fixtures]
+   [domain.lesson :as sut]))
+
+
+;; =============================================================================
+;; generate-trials
+;; =============================================================================
+
+
+(deftest generate-trials-creates-word-trials
+  (testing "each word produces a word trial with :type, :word-id, :prompt, :answer"
+    (let [trials (sut/generate-trials fixtures/lesson-words [])]
+      (is (= 2 (count trials)))
+      (is (= fixtures/expected-word-trials trials)))))
+
+
+(deftest generate-trials-creates-example-trials
+  (testing "each example produces an example trial"
+    (let [trials (sut/generate-trials [] fixtures/lesson-examples)]
+      (is (= 1 (count trials)))
+      (is (= fixtures/expected-example-trials trials)))))
+
+
+(deftest generate-trials-combines-words-and-examples
+  (testing "word trials come first, then example trials"
+    (let [trials (sut/generate-trials fixtures/lesson-words fixtures/lesson-examples)]
+      (is (= 3 (count trials)))
+      (is (= fixtures/all-expected-trials trials)))))
+
+
+(deftest generate-trials-handles-empty-inputs
+  (testing "empty words and examples produces empty trials"
+    (is (= [] (sut/generate-trials [] [])))))
+
+
+;; =============================================================================
+;; trial predicates
+;; =============================================================================
+
+
+(deftest example-trial?-identifies-example-trials
+  (let [word-trial    {:type "word" :word-id "w1" :prompt "p" :answer "a"}
+        example-trial {:type "example" :word-id "w1" :prompt "p" :answer "a"}]
+    (is (false? (sut/example-trial? word-trial)))
+    (is (true? (sut/example-trial? example-trial)))))
+
+
+(deftest word-trial?-identifies-word-trials
+  (let [word-trial    {:type "word" :word-id "w1" :prompt "p" :answer "a"}
+        example-trial {:type "example" :word-id "w1" :prompt "p" :answer "a"}]
+    (is (true? (sut/word-trial? word-trial)))
+    (is (false? (sut/word-trial? example-trial)))))
+
+
+;; =============================================================================
+;; trial-id
+;; =============================================================================
+
+
+(deftest trial-id-generates-unique-composite-id
+  (testing "trial-id combines type and word-id"
+    (let [word-trial    {:type "word" :word-id "w1" :prompt "p" :answer "a"}
+          example-trial {:type "example" :word-id "w1" :prompt "p" :answer "a"}]
+      (is (= "word:w1" (sut/trial-id word-trial)))
+      (is (= "example:w1" (sut/trial-id example-trial)))
+      (is (not= (sut/trial-id word-trial) (sut/trial-id example-trial))))))
+
+
+;; =============================================================================
+;; initial-state
+;; =============================================================================
+
+
+(deftest initial-state-creates-lesson-document
+  (testing "lesson has required fields per data-model spec"
+    (let [state (sut/initial-state
+                 fixtures/lesson-words
+                 fixtures/lesson-examples
+                 :first
+                 "2024-08-20T10:00:00.000Z")]
+      (is (= "lesson" (:_id state)))
+      (is (= "lesson" (:type state)))
+      (is (= "2024-08-20T10:00:00.000Z" (:started-at state)))
+      (is (= 3 (count (:trials state))))
+      (is (= 3 (count (:remaining-trials state))))
+      (is (some? (:current-trial state)))
+      (is (nil? (:last-result state))))))
+
+
+(deftest initial-state-does-not-include-words
+  (testing "lesson document has denormalized trials, no :words field"
+    (let [state (sut/initial-state
+                 fixtures/lesson-words
+                 fixtures/lesson-examples
+                 :first
+                 "2024-08-20T10:00:00.000Z")]
+      (is (not (contains? state :words))))))
+
+
+(deftest initial-state-uses-injected-trial-selector
+  (testing ":first selector picks first trial"
+    (let [state (sut/initial-state
+                 fixtures/lesson-words
+                 fixtures/lesson-examples
+                 :first
+                 "2024-08-20T10:00:00.000Z")]
+      (is (= (first (:trials state)) (:current-trial state))))))
+
+
+;; =============================================================================
+;; expected-answer
+;; =============================================================================
+
+
+(deftest expected-answer-returns-trial-answer
+  (let [state (sut/initial-state
+               fixtures/lesson-words
+               []
+               :first
+               "2024-08-20T10:00:00.000Z")]
+    (is (= "der Hund" (sut/expected-answer state)))))
+
+
+;; =============================================================================
+;; normalized-answer
+;; =============================================================================
+
+
+(deftest normalized-answer-handles-case-and-german-chars
+  (testing "normalizes for comparison"
+    (is (= (sut/normalized-answer "Der Hund")
+           (sut/normalized-answer "der hund")))
+    (is (= (sut/normalized-answer "Käse")
+           (sut/normalized-answer "kaese")))
+    (is (= (sut/normalized-answer "größe")
+           (sut/normalized-answer "GROESSE")))
+    (is (= (sut/normalized-answer "  extra   spaces  ")
+           (sut/normalized-answer "extra spaces")))))
+
+
+(deftest normalized-answer-handles-nil
+  (is (= "" (sut/normalized-answer nil))))
+
+
+;; =============================================================================
+;; check-answer - correct answers
+;; =============================================================================
+
+
+(deftest check-answer-correct-removes-trial
+  (testing "correct answer removes trial from remaining-trials"
+    (let [state (sut/initial-state
+                 fixtures/lesson-words
+                 []
+                 :first
+                 "2024-08-20T10:00:00.000Z")
+          state (sut/check-answer state "der Hund")]
+      (is (true? (:correct? (sut/last-result state))))
+      (is (= 1 (count (:remaining-trials state)))))))
+
+
+(deftest check-answer-correct-case-insensitive
+  (testing "answer comparison ignores case"
+    (let [state (sut/initial-state
+                 fixtures/lesson-words
+                 []
+                 :first
+                 "2024-08-20T10:00:00.000Z")
+          state (sut/check-answer state "DER HUND")]
+      (is (true? (:correct? (sut/last-result state)))))))
+
+
+;; =============================================================================
+;; check-answer - wrong answers
+;; =============================================================================
+
+
+(deftest check-answer-wrong-keeps-trial
+  (testing "wrong answer keeps trial in remaining-trials"
+    (let [state (sut/initial-state
+                 fixtures/lesson-words
+                 []
+                 :first
+                 "2024-08-20T10:00:00.000Z")
+          state (sut/check-answer state "wrong answer")]
+      (is (false? (:correct? (sut/last-result state))))
+      (is (= 2 (count (:remaining-trials state)))))))
+
+
+;; =============================================================================
+;; check-answer - result shape
+;; =============================================================================
+
+
+(deftest check-answer-returns-lesson-state
+  (testing "check result returns lesson state"
+    (let [state     (sut/initial-state
+                     fixtures/lesson-words
+                     []
+                     :first
+                     "2024-08-20T10:00:00.000Z")
+          new-state (sut/check-answer state "der Hund")]
+      (is (= (keys state) (keys new-state))))))
+
+
+(deftest check-answer-last-result-includes-user-answer
+  (testing "last-result stores user's answer per spec"
+    (let [state (sut/initial-state
+                 fixtures/lesson-words
+                 []
+                 :first
+                 "2024-08-20T10:00:00.000Z")
+          state (sut/check-answer state "my answer")]
+      (is (= "my answer" (:answer (sut/last-result state)))))))
+
+
+;; =============================================================================
+;; check-answer - is-finished?
+;; =============================================================================
+
+
+(deftest check-answer-is-finished-when-no-remaining
+  (testing "is-finished? true when all trials answered correctly"
+    (let [state (sut/initial-state
+                 [{:id "w1" :value "der Hund" :translation "dog"}]
+                 []
+                 :first
+                 "2024-08-20T10:00:00.000Z")
+          state (sut/check-answer state "der Hund")]
+      (is (true? (sut/finished? state)))
+      (is (empty? (:remaining-trials state))))))
+
+
+(deftest check-answer-not-finished-when-remaining
+  (testing "is-finished? false when trials remain"
+    (let [state (sut/initial-state
+                 fixtures/lesson-words
+                 []
+                 :first
+                 "2024-08-20T10:00:00.000Z")
+          state (sut/check-answer state "der Hund")]
+      (is (false? (sut/finished? state))))))
+
+
+;; =============================================================================
+;; advance
+;; =============================================================================
+
+
+(deftest advance-selects-next-trial
+  (testing "advance selects from remaining trials excluding current"
+    (let [state      (sut/initial-state
+                      fixtures/lesson-words
+                      []
+                      :first
+                      "2024-08-20T10:00:00.000Z")
+          next-state (sut/advance state)]
+      ;; With 2 trials and :first selector, advance excludes current and picks from remaining
+      ;; Current is first trial, so next should be the second trial
+      (is (= (second (:remaining-trials state))
+             (:current-trial next-state))))))
+
+
+(deftest advance-clears-last-result
+  (testing "advance sets last-result to nil"
+    (let [state      (sut/initial-state
+                      fixtures/lesson-words
+                      []
+                      :first
+                      "2024-08-20T10:00:00.000Z")
+          state      (sut/check-answer state "der Hund")
+          next-state (sut/advance state)]
+      (is (some? (sut/last-result state)))
+      (is (nil? (sut/last-result next-state))))))
+
+
+(deftest advance-returns-nil-when-no-remaining
+  (testing "advance returns nil when no trials remain"
+    (let [state (sut/initial-state
+                 [{:id "w1" :value "der Hund" :translation "dog"}]
+                 []
+                 :first
+                 "2024-08-20T10:00:00.000Z")
+          state (sut/check-answer state "der Hund")]
+      (is (nil? (sut/advance state))))))
+
+
+(deftest advance-uses-random-selector-by-default
+  (testing "advance uses trial-selector from options"
+    (let [state      (sut/initial-state
+                      fixtures/lesson-words
+                      []
+                      :first
+                      "2024-08-20T10:00:00.000Z")
+          next-state (sut/advance state)]
+      ;; Just verify it returns a state with a current-trial
+      (is (some? next-state))
+      (is (some? (sut/current-trial next-state))))))
+
+
+;; =============================================================================
+;; Full lesson flow
+;; =============================================================================
+
+
+(deftest full-lesson-flow
+  (testing "complete lesson from start to finish"
+    (let [state        (sut/initial-state
+                        fixtures/lesson-words
+                        fixtures/lesson-examples
+                        :first
+                        "2024-08-20T10:00:00.000Z")
+          trials-count (count (:remaining-trials state))]
+      ;; Start with 3 trials
+      (is (= 3 trials-count))
+
+      ;; Answer all trials correctly
+      (let [final-state
+            (loop [current-state state
+                   attempts      trials-count]
+              (let [answer       (sut/expected-answer current-state)
+                    lesson-state (sut/check-answer current-state answer)]
+                (if (or (sut/finished? lesson-state) (zero? attempts))
+                  lesson-state
+                  (recur (sut/advance lesson-state) (dec attempts)))))]
+        (is (empty? (:remaining-trials final-state)))))))

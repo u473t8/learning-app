@@ -1,5 +1,6 @@
 (ns examples
   "Client module for fetching example sentences from the backend."
+  (:refer-clojure :exclude [list find])
   (:require
    [db :as db]
    [lambdaisland.glogi :as log]
@@ -44,11 +45,18 @@
     (db/insert db example-doc)))
 
 
-(defn find 
+(defn find
   "Retrieves the example document for a given word-id, or nil if none exists."
   [db word-id]
   (p/let [{examples :docs} (db/find db {:selector {:type "example" :word-id word-id}})]
     (first examples)))
+
+
+(defn list
+  "Retrieves example documents for the given word-ids."
+  [db word-ids]
+  (p/let [{examples :docs} (db/find db {:selector {:type "example" :word-id {:$in word-ids}}})]
+    examples))
 
 
 (defn remove!
