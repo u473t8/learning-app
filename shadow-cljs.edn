@@ -24,6 +24,9 @@
   [cider.nrepl/cider-middleware
    refactor-nrepl.middleware/wrap-refactor]}
 
+ :dev-http
+ {8021 "target/browser-test"}
+
  :builds
  {:app
   {:target :browser
@@ -40,8 +43,13 @@
     :watch-path   "/css"}
    :release-stubs #{debux.core}}
 
-  :test
+  :node-test
   {:target    :node-test
    :output-to "target/node-tests.js"
    :autorun   true
+   :ns-regexp "-test$"}
+
+  :browser-test
+  {:target    :browser-test
+   :test-dir  "target/browser-test"
    :ns-regexp "-test$"}}}
