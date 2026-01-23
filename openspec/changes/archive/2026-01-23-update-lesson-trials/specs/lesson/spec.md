@@ -14,8 +14,6 @@ The system SHALL store lesson trials according to `specs/data-model/spec.md`.
 - **WHEN** a lesson trial is persisted
 - **THEN** it matches the lesson trial shape in `specs/data-model/spec.md`
 
-## MODIFIED Requirements
-
 ### Requirement: Lesson answer checks update lesson state
 The system SHALL return updated lesson state after answer checks, recording the result in `:last-result`.
 
