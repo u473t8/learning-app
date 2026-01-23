@@ -1,4 +1,4 @@
-(ns reitit.http.interceptors.parameters 
+(ns reitit.http.interceptors.parameters
   (:require
    [clojure.string :as str]
    [lambdaisland.glogi :as log]
@@ -14,7 +14,7 @@
   :form-params  - a map of parameters from the body
   :params       - a merged map of all types of parameter"
   []
-  {:name ::parameters
+  {:name  ::parameters
    :enter (fn [ctx]
             (let [query-params (some-> ctx
                                        :request
@@ -23,14 +23,18 @@
                                        .entries
                                        js/Object.fromEntries
                                        (js->clj :keywordize-keys true))
-                  content-type (-> ctx :request :headers (get "content-type"))]
+                  query-params (or query-params {})
+                  content-type (-> ctx :request :headers (get "content-type"))
+                  ctx          (-> ctx
+                                   (assoc-in [:request :query-params] query-params)
+                                   (assoc-in [:request :params] query-params))]
               (log/debug :parameters-interceptor/enter {"Content-Type" content-type})
               (if (some-> content-type (str/includes? "application/x-www-form-urlencoded"))
                 (p/let [form-data (-> ctx :request :js/request .formData) ; a promise
                         form-data (-> form-data .entries js/Object.fromEntries (js->clj :keywordize-keys true))]
                   (log/debug :parameters-interceptor/enter {"Form-Data" form-data})
                   ;; original ring.middleware.params middleware merges form-data and query-params in the same order.
-                  (update ctx :request merge {:query-params query-params :form-params form-data, :params (merge form-data query-params)}))
+                  (-> ctx
+                      (update :request assoc :form-params form-data)
+                      (update-in [:request :params] merge form-data)))
                 ctx)))})
-
-
