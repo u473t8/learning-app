@@ -6,17 +6,10 @@
    [application :as application]
    [clojure.string :as str]
    [lambdaisland.glogi :as log]
-   [lambdaisland.glogi.console :as glogi-console]
+   [logging]
    [promesa.core :as p]
    [tasks :as tasks]
    [utils :as utils]))
-
-
-(glogi-console/install!)
-
-
-(log/set-levels
- {:glogi/root :debug})
 
 
 (def base-precache-urls
@@ -99,12 +92,12 @@
 (defn network-first-fetch
   [request]
   (p/catch
-   (p/let [response (js/fetch request)
-           cache    (js/caches.open "resources")]
-    (.put cache request (.clone response))
-    response)
-   (fn [_]
-    (js/caches.match request))))
+    (p/let [response (js/fetch request)
+            cache    (js/caches.open "resources")]
+      (.put cache request (.clone response))
+      response)
+    (fn [_]
+      (js/caches.match request))))
 
 
 (defn- request->ring
@@ -114,17 +107,17 @@
         url-object (js/URL. (.-url request))
         headers    (-> request .-headers .entries js/Object.fromEntries js->clj)
         headers    (update-keys headers str/lower-case)]
-    {:server-port (.-port url-object)
-     :server-name (.-hostname url-object)
-     :uri (.-pathname url-object)
-     :url (.-url request)
-     :query-string (utils/non-blank (.-search url-object))
-     :scheme (-> url-object .-protocol (str/replace #":" "") keyword)
+    {:server-port    (.-port url-object)
+     :server-name    (.-hostname url-object)
+     :uri            (.-pathname url-object)
+     :url            (.-url request)
+     :query-string   (utils/non-blank (.-search url-object))
+     :scheme         (-> url-object .-protocol (str/replace #":" "") keyword)
      :request-method (-> request .-method str/lower-case keyword)
-     :headers headers
-     :body (.-body request)
+     :headers        headers
+     :body           (.-body request)
      ;; Custom non-ring fields
-     :js/request request}))
+     :js/request     request}))
 
 
 (defn- ring->response

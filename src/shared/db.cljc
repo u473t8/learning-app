@@ -176,12 +176,8 @@
 
 
 (defmacro with-couch-op
-  [op-id body]
-  `(p/catch
-     (p/-> ~body couch->clj)
-     (fn [error#]
-       #?(:clj (telemere/log! {:level :error :id ~op-id :data error#})
-          :cljs (log/error ~op-id error#)))))
+  [_op-id body]
+  `(p/-> ~body couch->clj))
 
 
 #?(:clj
@@ -282,9 +278,13 @@
   ([db docname]
    (get db docname {}))
   ([db docname params]
-   (with-couch-op :couch/get
-     #?(:clj (request {:method :get :url (str (:name db) "/" docname) :query-params (clj->couch params)})
-        :cljs (.get ^js db docname (clj->couch params))))))
+   (p/catch
+     (with-couch-op :couch/get
+       #?(:clj (request {:method :get :url (str (:name db) "/" docname) :query-params (clj->couch params)})
+          :cljs (.get ^js db docname (clj->couch params))))
+     (fn [error]
+       (when (not= "404" (#?(:clj :status :cljs .-status) error))
+         (throw error))))))
 
 
 (defn find
