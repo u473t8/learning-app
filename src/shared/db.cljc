@@ -97,6 +97,17 @@
                  :else        x)))))
 
 
+(defn- not-found?
+  [error]
+  (let [status #?(:clj (:status error)
+                  :cljs (.-status error))
+        name   #?(:clj (:name error)
+                  :cljs (.-name error))]
+    (or (= status 404)
+        (= status "404")
+        (= name "not_found"))))
+
+
 #?(:clj
    (defn request-sync
      "opts:
@@ -283,7 +294,7 @@
        #?(:clj (request {:method :get :url (str (:name db) "/" docname) :query-params (clj->couch params)})
           :cljs (.get ^js db docname (clj->couch params))))
      (fn [error]
-       (when (not= "404" (#?(:clj :status :cljs .-status) error))
+       (when-not (not-found? error)
          (throw error))))))
 
 
@@ -327,9 +338,14 @@
    - `execution-stats` (*object*) – Execution statistics.
    - `bookmark` (*string*) – An opaque string used for paging. See the bookmark field in the request (above) for usage details."
   [db query]
-  (with-couch-op :couch/find
-    #?(:clj (request {:method :get :url (str (:name db) "/_find") :body (clj->couch query)})
-       :cljs (.find ^js db (clj->couch query)))))
+  (p/catch
+    (with-couch-op :couch/find
+      #?(:clj (request {:method :get :url (str (:name db) "/_find") :body (clj->couch query)})
+         :cljs (.find ^js db (clj->couch query))))
+    (fn [error]
+      #?(:cljs (js/console.log :error error))
+      (when-not (not-found? error)
+        (throw error)))))
 
 
 (defn create-index

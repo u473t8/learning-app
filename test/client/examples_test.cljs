@@ -52,9 +52,12 @@
     (let [original-fetch js/fetch]
       (set! js/fetch (fetch-mocks/mock-fetch-error 500))
       (p/finally
-        (p/do
-          (sut/fetch-one "Hund")
-          (is false "Should have rejected"))
+        (p/catch
+          (p/do
+            (sut/fetch-one "Hund")
+            (is false "Should have rejected"))
+          (fn [error]
+            (is (= 500 (:status (ex-data error))))))
         (fn []
           (set! js/fetch original-fetch))))))
 
@@ -64,9 +67,12 @@
     (let [original-fetch js/fetch]
       (set! js/fetch (fetch-mocks/mock-fetch-network-error))
       (p/finally
-        (p/do
-          (sut/fetch-one "Hund")
-          (is false "Should have rejected"))
+        (p/catch
+          (p/do
+            (sut/fetch-one "Hund")
+            (is false "Should have rejected"))
+          (fn [error]
+            (is (= "Network error" (.-message error)))))
         (fn []
           (set! js/fetch original-fetch))))))
 
