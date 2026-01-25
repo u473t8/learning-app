@@ -8,6 +8,7 @@
    #?(:clj [org.httpkit.client :as client])
    #?(:clj [taoensso.telemere :as telemere])
    #?(:cljs [lambdaisland.glogi :as log])
+   ;; PouchDB's browser bundle depends on the npm "events" package.
    #?(:cljs ["pouchdb" :as PouchDB])
    #?(:cljs ["pouchdb-find" :as PouchFind])
    #?(:cljs [taoensso.telemere]) ; cljs build fails without this dependensy, I don't understand why
