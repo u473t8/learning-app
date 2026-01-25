@@ -12,24 +12,24 @@ jobs:
     name: Client Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5.2.0
         with:
           distribution: temurin
           java-version: 21
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6.2.0
         with:
           node-version: 20
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - uses: DeLaGuardo/setup-clojure@13.4
+      - uses: DeLaGuardo/setup-clojure@13.5.2
         with:
           cli: latest
 
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@v5.0.2
         with:
           path: |
             ~/.m2/repository
@@ -42,7 +42,7 @@ jobs:
       - run: npm ci
       - run: npx shadow-cljs compile node-test
 
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@v5.0.2
         if: always()
         with:
           path: |
