@@ -1,4 +1,4 @@
-(ns reitit.interceptor.sieppari 
+(ns reitit.interceptor.sieppari
   (:require
    [promesa.core :as p]
    [promesa.impl.promise]
@@ -9,9 +9,9 @@
    [sieppari.queue :as queue]))
 
 
- (extend-protocol sieppari.interceptor/IntoInterceptor
-   reitit.interceptor/Interceptor
-   (into-interceptor [t] t))
+(extend-protocol sieppari.interceptor/IntoInterceptor
+  reitit.interceptor/Interceptor
+  (into-interceptor [t] t))
 
 
 (extend-protocol sieppari.async/AsyncContext
@@ -38,8 +38,7 @@
 
 (def executor
   #_{:clj-kondo/ignore [:missing-protocol-method]}
-  (reify
-    reitit.interceptor/Executor
+  (reify reitit.interceptor/Executor
     (queue [_ interceptors]
       (queue/into-queue
        (map

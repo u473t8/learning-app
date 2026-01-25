@@ -79,14 +79,14 @@
 (defn now-ms
   "Returns current time as milliseconds since epoch."
   []
-  #?(:clj  (System/currentTimeMillis)
+  #?(:clj (System/currentTimeMillis)
      :cljs (js/Date.now)))
 
 
 (defn now-iso
   "Returns current time as ISO-8601 string."
   []
-  #?(:clj  (.toString (java.time.Instant/now))
+  #?(:clj (.toString (java.time.Instant/now))
      :cljs (.toISOString (js/Date.))))
 
 
@@ -98,22 +98,19 @@
 (defn ms->iso
   "Converts milliseconds to ISO-8601 string."
   [ms]
-  #?(:clj  (.toString (java.time.Instant/ofEpochMilli ms))
+  #?(:clj (.toString (java.time.Instant/ofEpochMilli ms))
      :cljs (.toISOString (js/Date. ms))))
 
 
 (defn iso->ms
   "Converts ISO-8601 string to milliseconds."
   [iso]
-  #?(:clj  (.toEpochMilli (java.time.Instant/parse iso))
+  #?(:clj (.toEpochMilli (java.time.Instant/parse iso))
      :cljs (js/Date.parse iso)))
 
 
 (defn date->ms
   "Converts Date object to milliseconds."
   [date]
-  #?(:clj  (.getTime ^java.util.Date date)
+  #?(:clj (.getTime ^java.util.Date date)
      :cljs (.getTime date)))
-
-
-
