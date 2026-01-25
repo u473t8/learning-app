@@ -1,0 +1,57 @@
+# lesson Specification
+
+## Purpose
+The lesson spec defines the behavior and state management for interactive learning sessions where users practice vocabulary through trials. It covers lesson initialization, trial progression, and configuration options for customizing the learning experience.
+## Requirements
+### Requirement: Lesson state includes options object
+The system SHALL create lesson state with an options object containing configuration settings.
+
+#### Scenario: Lesson initialization with options
+- **WHEN** creating initial lesson state
+- **THEN** the state includes an `options` object with `trial-selector`
+- **AND** `trial-selector` defaults to `:random` if not specified
+
+### Requirement: Lesson advancement uses options
+The system SHALL use trial-selector from lesson options when advancing to next trials.
+
+#### Scenario: Trial advancement with options
+- **WHEN** advancing to the next trial
+- **THEN** the selection uses the `trial-selector` from lesson `options`
+- **AND** maintains backward compatibility for lessons without options
+
+### Requirement: Lesson documents follow data-model spec
+The system SHALL store lesson documents according to `specs/data-model/spec.md`.
+
+#### Scenario: Lesson document shape
+- **WHEN** a lesson is persisted
+- **THEN** it matches the lesson document shape in `specs/data-model/spec.md`
+
+### Requirement: Lesson trials follow data-model spec
+The system SHALL store lesson trials according to `specs/data-model/spec.md`.
+
+#### Scenario: Trial document shape
+- **WHEN** a lesson trial is persisted
+- **THEN** it matches the lesson trial shape in `specs/data-model/spec.md`
+
+### Requirement: Lesson answer checks update lesson state
+The system SHALL return updated lesson state after answer checks, recording the result in `:last-result`.
+
+#### Scenario: Answer check response
+- **WHEN** an answer is checked
+- **THEN** the response includes `lesson-state` with `:last-result` containing `:correct?` and `:answer`
+
+### Requirement: Lesson trial generation rules
+The system SHALL generate trials for each word and each example, using denormalized prompts and answers.
+
+#### Scenario: Trial generation
+- **WHEN** a lesson starts
+- **THEN** each word produces a word trial and each example produces an example trial
+
+### Requirement: Lesson state is denormalized
+The system SHALL store lesson state without a separate `:words` collection.
+
+#### Scenario: Lesson state fields
+- **WHEN** lesson state is stored
+- **THEN** it includes `:trials`, `:remaining-trials`, `:current-trial`, and `:last-result`
+- **AND** it omits a `:words` field
+

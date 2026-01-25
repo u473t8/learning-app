@@ -4,43 +4,60 @@
 ;; Uses :respect-nl style to preserve intentional line breaks in code,
 ;; but allows map key sorting.
 
+
 {;; Base community style with respect for existing newlines
- :style [:community :respect-nl]
+ :style   [:community :respect-nl]
 
  ;; Line width
- :width 120
+ :width   120
 
  ;; Two blank lines between top-level forms
  ;; (3 newlines = 2 blank lines)
- :parse {:interpose "\n\n\n"}
+ :parse   {:interpose "\n\n\n"}
 
  ;; Map formatting
- :map {:comma? false           ; No commas in maps (Clojure style)
-       ;; respect-nl? and :sort? are mutually exclusive
-       :respect-nl? true       ; Disable respect-nl to allow sorting
-       ;; :sort? true          ; Sort keys alphabetically
-       :sort-in-code? false    ; Do not sort maps in code (e.g. destructuring)
-       :key-order [:id :_id]   ; Keep :id and :_id first
-       :justify? true          ; Align map values
-       :justify {:max-variance 10}}  ; Disable alignment if key length varies >15
+ :map     {:comma?        false      ; No commas in maps (Clojure style)
+           ;; respect-nl? and :sort? are mutually exclusive
+           :respect-nl?   true       ; Disable respect-nl to allow sorting
+           ;; :sort? true          ; Sort keys alphabetically
+           :sort-in-code? false      ; Do not sort maps in code (e.g. destructuring)
+           :key-order     [:id :_id] ; Keep :id and :_id first
+           :justify?      true       ; Align map values
+           :justify       {:max-variance 15}} ; Disable alignment if key length varies >15
 
-
- ;; Let binding formatting
- :binding {:justify? true      ; Align binding values
-           :justify {:max-variance 10}}  ; Disable if name length varies >15
+;; Let binding formatting
+ :binding {:justify? true ; Align binding values
+           :justify  {:max-variance 15}} ; Disable if name length varies >15
 
  ;; Pair formatting (cond, case, etc.)
- :pair {:justify? true
-        :justify {:max-variance 10}}
+ :pair    {:justify? true
+           :justify  {:max-variance 15}}
+
+ ;; Reader conditionals - proper indentation when multiline
+ :reader-cond {:indent 0}
+
+ :comment  {:count? nil :wrap? nil}
 
  ;; Function-specific formatting
- :fn-map {;; Threading macros - keep short forms on one line
-          "->"        :none
-          "->>"       :none
-          "some->"    :none
-          "some->>"   :none
-          "jdbc/on-connection" :binding
-          "p/catch"   [:none {:list {:indent 1}}]
-          ;; Require/import - use 1-space indent (not 2)
-          ":require"  [:none {:list {:indent 1}}]
-          ":import"   [:none {:list {:indent 1}}]}}
+ :fn-map  {;; Threading macros - keep short forms on one line
+           "->"            :none
+           "->>"           :none
+           ":import"       [:none {:list {:indent 1}}]
+           ":require"      [:none {:list {:indent 1}}]
+           "async"         :arg1-body
+           "async-testing" :arg1-body
+           "extend-protocol" :arg1-body
+           "jdbc/on-connection" :binding
+           "p/catch"       :none-body
+           "p/do"          :none-body
+           "p/finally"     :none-body
+           "p/let"         :binding
+           "reify"         [:arg1-body
+                            {:next-inner
+                             {:fn-map {:default :arg1-body}
+                              :next-inner-restore [[:fn-map :default]]}}]
+           "some->"        :none
+           "some->>"       :none
+           "with-couch-op" :arg1-body
+           "with-test-db"  :none-body
+           "with-mocked-env" :arg1-body}}

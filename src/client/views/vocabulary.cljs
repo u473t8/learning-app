@@ -1,4 +1,4 @@
-(ns views.word
+(ns views.vocabulary
   "Pure view functions for word-related UI. Data → Hiccup."
   (:require [utils :as utils]))
 
@@ -15,36 +15,36 @@
 
 (defn word-list-item
   "Renders a single word item in the list."
-  [{:keys [id editing? retention-level translation value]}]
+  [{:keys [id retention-level translation value]} & {:keys [editing?]}]
   (let [item-id (str "word-" id)]
     [:li.word-item
      {:class (when editing? "word-item--editing") :id item-id}
      (if editing?
        ;; Edit mode - show inputs
        [:form.word-item__form
-        {:hx-put     (str "/words?word-id=" id)
+        {:hx-put     (str "/words/" id)
          :hx-trigger "submit"
          :hx-swap    "outerHTML"
          :hx-target  (str "#" item-id)}
         [:div.word-item__inputs
          [:input.word-item__input
-          {:name        "value"
+          {:name           "value"
            :autocapitalize "off"
-           :autocomplete "off"
-           :autocorrect "off"
-           :autofocus   true
-           :lang        "de"
-           :placeholder "Слово"
-           :value       value}]
+           :autocomplete   "off"
+           :autocorrect    "off"
+           :autofocus      true
+           :lang           "de"
+           :placeholder    "Слово"
+           :value          value}]
          [:span.word-item__arrow "→"]
          [:input.word-item__input
-          {:name "translation"
+          {:name         "translation"
            :autocapitalize "off"
            :autocomplete "off"
-           :autocorrect "off"
-           :lang "ru"
-           :placeholder "Перевод"
-           :value translation}]]
+           :autocorrect  "off"
+           :lang         "ru"
+           :placeholder  "Перевод"
+           :value        translation}]]
         [:div.word-item__actions
          [:button.word-item__save {:type "submit"} "Сохранить"]
          [:button.word-item__cancel
@@ -55,7 +55,7 @@
           "Отмена"]
          [:button.word-item__delete
           {:type       "button"
-           :hx-delete  (str "/words?id=" id)
+           :hx-delete  (str "/words/" id)
            :hx-confirm (str "Удалить «" value "»?")
            :hx-trigger "click"
            :hx-swap    "delete"
@@ -104,16 +104,66 @@
 
 (defn validation-error-inputs
   "Renders OOB error inputs for validation failures. Preserves user's values."
-  [{:keys [value-blank? translation-blank?]} {:keys [value translation]}]
+  [{:keys [value-blank? translation-blank?]}]
   (cond-> (list)
     value-blank?
     (conj
      [:input.new-word-form__input.new-word-form__input--error
-      {:hx-swap-oob "true" :id "new-word-value" :name "value" :value (or value "")}])
+      {:hx-swap-oob "true" :id "new-word-value" :name "value" :value ""}])
     translation-blank?
     (conj
      [:input.new-word-form__input.new-word-form__input--error
       {:hx-swap-oob "true"
-       :id    "new-word-translation"
-       :name  "translation"
-       :value (or translation "")}])))
+       :id          "new-word-translation"
+       :name        "translation"
+       :value       ""}])))
+
+
+(defn words-page
+  "Words page. When empty? is true, shows empty state without header/search/footer."
+  [& {:keys [empty?]}]
+  (if empty?
+    [:div.words-page
+     [:div.words-page__list
+      [:ul.word-list
+       {:id "word-list"}
+       [:li.word-list__empty
+        {:id "word-list-empty"}
+        [:div.empty-state
+         [:p.empty-state__text "Слов пока нет"]
+         [:p.empty-state__hint "Добавьте первое слово на главной странице"]
+         [:button.empty-state__cta
+          {:hx-get "/home" :hx-push-url "true" :hx-swap "innerHTML" :hx-target "#app"}
+          "Добавить слово"]]]]]]
+    [:div.words-page
+     [:header.words-page__header
+      [:button.words-page__back
+       {:hx-get "/home" :hx-push-url "true" :hx-swap "innerHTML" :hx-target "#app"}
+       "← Назад"]
+      [:h1.words-page__title "Мои слова"]]
+     [:form.words-page__search
+      [:div.input
+       [:span.input__search-icon]
+       [:input.input__input-area.input__input-area--icon
+        {:autocomplete "off"
+         :hx-get       "/words"
+         :placeholder  "Поиск"
+         :hx-target    "#word-list"
+         :hx-swap      "innerHTML"
+         :hx-trigger   "input changed delay:500ms, keyup[key=='Enter']"
+         :name         "search"}]]]
+     [:div.words-page__list
+      {:hx-get     "/words"
+       :hx-trigger "load, words-changed"
+       :hx-target  "#word-list"
+       :hx-swap    "outerHTML"}
+      [:ul.word-list
+       {:id "word-list"}]]
+     [:footer.words-page__footer
+      [:button.words-page__start.big-button.green-button
+       {:hx-get       "/lesson"
+        :hx-indicator "#loader"
+        :hx-push-url  "true"
+        :hx-swap      "innerHTML"
+        :hx-target    "#app"}
+       "НАЧАТЬ УРОК"]]]))

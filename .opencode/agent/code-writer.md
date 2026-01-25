@@ -20,4 +20,4 @@ References:
 - docs/process/code-style.md
 - docs/process/coding-principles.md
 - docs/philosophy.md
-- docs/architecture/data-model.md
+- openspec/specs/data-model/spec.md

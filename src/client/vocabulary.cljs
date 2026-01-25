@@ -1,186 +1,90 @@
 (ns vocabulary
+  (:refer-clojure :exclude [list count get])
   (:require
-   [clojure.math :as math]
+   [clojure.core :as clojure]
    [db :as db]
+   [domain.vocabulary :as domain]
    [promesa.core :as p]
    [utils :as utils]))
 
-(def db
-  (db/use "local-db"))
 
-(defn add-word
-  [value translation]
-  (let [vocab-entry {:type "vocab",
-                     :value value,
-                     :translation [{:lang "ru" :value translation}]}]
-    (p/let [{:keys [id]} (db/insert db vocab-entry)
-            review-entry {:type "review",
-                          :word-id id
-                          :retained true,
-                          :timestamp (utils/now-iso)
-                          :translation [{:lang "ru" :value translation}]}]
-      (db/insert db review-entry)
+(defn add!
+  "Adds a new vocabulary word with an initial review.
+   The initial review marks the first exposure to the word,
+   providing a baseline timestamp for retention decay calculation."
+  [db value translation]
+  (let [now-iso (utils/now-iso)
+        word    (domain/new-word value translation now-iso)]
+    (p/let [{:keys [id]} (db/insert db word)
+            review       (domain/new-review id true translation now-iso)]
+      (db/insert db review)
       id)))
 
-;; approx 50% forgetting after 5 min
-(def ^:private initial-forgetting-rate 0.00231)
 
-(defn retention-level
-  [reviews]
-  (let [;; Convert ISO review timestamps to unix seconds for the following timestamp arithmetics
-        reviews (map #(update % :timestamp utils/timestamp:iso->unix) reviews)
-        ;; Order reviews chronologically
-        reviews (sort-by :timestamp reviews)
+(defn get
+  "Returns a word summary by id, or nil if not found."
+  [db word-id]
+  (p/let [word (db/get db word-id)]
+    (when word
+      (p/let [{reviews :docs} (db/find db {:selector {:type "review" :word-id word-id}})]
+        (domain/word-summary word reviews (utils/now-ms))))))
 
-        last-review-timestamp (-> reviews last :timestamp)
 
-        ;; Enrich each review with information about time passed since previous review
-        reviews (->> reviews
-                     (reverse)
-                     (partition 2)
-                     (map (fn [[review-1 review-0]]
-                            (assoc review-1 :time-since-previous-review (- (:timestamp review-1) (:timestamp review-0)))))
-                     (reverse))
-        forgetting-rate (reduce
-                         (fn [forgetting-rate {:keys [retained time-since-previous-review]}]
-                           (if retained
-                             (/ forgetting-rate (+ 1 (* forgetting-rate time-since-previous-review)))
-                             (* 2 forgetting-rate)))
-                         initial-forgetting-rate
-                         reviews)
-        time-since-last-review (- (utils/now-unix) last-review-timestamp)]
-    (* 100 (math/exp (- (* forgetting-rate time-since-last-review))))))
-
-(defn words
+(defn list
   "Returns vocabulary words with retention levels.
    Options:
    - :order - :desc (default, highest first) or :asc (lowest first)
-   - :limit - max number of words to return (nil for all)"
-  ([] (words {}))
-  ([{:keys [order limit] :or {order :desc}}]
+   - :limit - max number of words to return (nil for all)
+   - :offset - number of words to skip
+   - :search - filter words by value/translation"
+  ([db] (list db {}))
+  ([db {:keys [order limit offset search] :or {order :desc}}]
    (p/let [{words :docs}   (db/find db {:selector {:type "vocab"}})
            {reviews :docs} (db/find db {:selector {:type "review"}})]
-     (cond->> (for [word words]
-                {:id (:_id word)
-                 :value (:value word)
-                 :translation (->> (:translation word)
-                                   (filter #(-> % :lang (= "ru")))
-                                   (map :value)
-                                   first)
-                 :retention-level (retention-level (filter #(-> % :word-id (= (:_id word)))
-                                                           reviews))})
-       :always (sort-by :retention-level (if (= order :asc) < >))
-       limit   (take limit)))))
+     (domain/summarize-words
+      words
+      reviews
+      (utils/now-ms)
+      {:order  order
+       :limit  limit
+       :offset offset
+       :search search}))))
 
 
-(defn words-count
-  []
+(defn count
+  "Returns the total number of vocabulary words."
+  [db]
   (p/let [{words :docs} (db/find db {:selector {:type "vocab"}})]
-    (count words)))
-
-(defn get-word
-  [word-id]
-  (p/let [doc (db/get db word-id)
-          {reviews :docs} (db/find db {:selector {:type "review", :word-id word-id}})]
-    {:id word-id
-     :value (:value doc)
-     :translation (->> (:translation doc)
-                       (filter #(-> % :lang (= "ru")))
-                       (map :value)
-                       first)
-     :retention-level (retention-level reviews)}))
-
-(defn change-word
-  [word-id value translation]
-  (p/let [doc (db/get db word-id)
-          new-doc (assoc doc :value value, :translation [{:lang "ru", :value translation}])]
-    (db/insert db new-doc)
-    (p/let [{reviews :docs} (db/find db {:selector {:type "review", :word-id word-id}})]
-      {:id word-id,
-       :value value,
-       :translation (->> (:translation new-doc)
-                         (filter #(-> % :lang (= "ru")))
-                         (map :value)
-                         first)
-       :retention-level (retention-level reviews)})))
-
-(defn delete-word
-  [word-id]
-  (p/let [doc (db/get db word-id)]
-    (db/remove db doc)))
+    (clojure/count words)))
 
 
-;;
-;; Examples
-;;
+(defn update!
+  "Updates a word's value and translation. Returns updated summary, or nil if not found."
+  [db word-id value translation]
+  (p/let [word (db/get db word-id)]
+    (when word
+      (p/let [word (domain/update-word word value translation (utils/now-iso))
+              _ (db/insert db word)
+              {reviews :docs} (db/find db {:selector {:type "review" :word-id word-id}})]
+        (domain/word-summary (assoc word :_id word-id) reviews (utils/now-ms))))))
 
 
-(defn words-without-examples
-  "Returns a list of vocab words that don't have an associated example document."
-  []
-  (p/let [{words :docs} (db/find db {:selector {:type "vocab"}})
-          {examples :docs} (db/find db {:selector {:type "example"}})]
-    (let [word-ids-with-examples (set (map :word-id examples))]
-      (for [word  words
-            :when (not (contains? word-ids-with-examples (:_id word)))]
-        {:id (:_id word)
-         :value (:value word)}))))
-
-
-(defn save-example
-  "Saves an example document for a vocabulary word.
-   `word-id` - the _id of the vocab document
-   `word` - the German word (denormalized for convenience)
-   `example` - map with :value, :translation, :structure from the backend"
-  [word-id word example]
-  (let [example-doc {:type "example"
-                     :word-id word-id
-                     :word word
-                     :value (:value example)
-                     :translation (:translation example)
-                     :structure (:structure example)}]
-    (db/insert db example-doc)))
-
-
-(defn get-example
-  "Retrieves the example document for a given word-id, or nil if none exists."
-  [word-id]
-  (p/let [{examples :docs} (db/find db {:selector {:type "example", :word-id word-id}})]
-    (first examples)))
-
-
-(defn delete-example
-  "Deletes an example document by its _id."
-  [example-id]
-  (p/let [doc (db/get db example-id)]
-    (db/remove db doc)))
-
-
-(defn words-for-lesson
-  "Returns up to n words with lowest retention levels, each enriched with example if available.
-   Optimized to only fetch examples for the selected words."
-  [n]
-  (p/let [selected-words (words {:order :asc :limit n})
-          word-ids (mapv :id selected-words)
-          {examples :docs} (db/find db {:selector {:type "example" :word-id {:$in word-ids}}})
-          examples-by-word-id (group-by :word-id examples)]
-    (mapv (fn [word]
-            (let [example (first (get examples-by-word-id (:id word)))]
-              (cond-> word
-                example (assoc :example
-                               {:id        (:_id example)
-                                :value     (:value example)
-                                :translation (:translation example)
-                                :structure (:structure example)}))))
-          selected-words)))
+(defn delete!
+  "Deletes a word and all its associated reviews and examples.
+   No-op if word doesn't exist."
+  [db word-id]
+  (p/let [word (db/get db word-id)]
+    (when word
+      (p/let [{reviews :docs}  (db/find db {:selector {:type "review" :word-id word-id}})
+              {examples :docs} (db/find db {:selector {:type "example" :word-id word-id}})]
+        (p/do
+          (p/all (map #(db/remove db %) reviews))
+          (p/all (map #(db/remove db %) examples))
+          (db/remove db word))))))
 
 
 (defn add-review
   "Creates a review document for a word."
-  [word-id retained translation]
-  (let [review {:type        "review"
-                :word-id     word-id
-                :retained    retained
-                :timestamp   (utils/now-iso)
-                :translation [{:lang "ru" :value translation}]}]
+  [db word-id retained translation]
+  (let [review (domain/new-review word-id retained translation (utils/now-iso))]
     (db/insert db review)))

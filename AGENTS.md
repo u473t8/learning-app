@@ -1,18 +1,18 @@
-# Common Guidelines
+<!-- OPENSPEC:START -->
+# OpenSpec Instructions
 
-## Project Philosphy
+These instructions are for AI assistants working in this project.
 
-See [docs/philosophy.md](docs/philosophy.md)
+Always open `@/openspec/AGENTS.md` when the request:
+- Mentions planning or proposals (words like proposal, spec, change, plan)
+- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
+- Sounds ambiguous and you need the authoritative spec before coding
 
-## Skills
+Use `@/openspec/AGENTS.md` to learn:
+- How to create and apply change proposals
+- Spec format and conventions
+- Project structure and guidelines
 
-- planner: plans tasks, enforces beads workflow, and gates execution on approval.
-- code-writer: implements Clojure changes on READY tasks with REPL-driven flow.
-- code-reviewer: reviews code for correctness and style; must approve before close.
-- ui-ux-designer: implements UI work with strict BEM and project philosophy.
-- ui-ux-reviewer: UI/UX review with BEM compliance checks.
-- devops-infra: manages infra, CI/CD, and deploy/runbook changes.
-- docs-maintainer: restructures docs, fixes links, and keeps documentation consistent.
-- server-admin: inspects production via `ssh hetzner` with explicit approval per command.
-- format-clj: formats Clojure/EDN files using the approved formatter.
-- beads: issue tracking and dependency management.
+Keep this managed block so 'openspec update' can refresh the instructions.
+
+<!-- OPENSPEC:END -->

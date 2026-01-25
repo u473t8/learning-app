@@ -1,4 +1,4 @@
-(ns examples 
+(ns examples
   (:require
    [cheshire.core :as cheshire]
    [org.httpkit.client :as client]))
@@ -30,13 +30,13 @@ Return only the JSON object without additional text.")
    {:url "https://api.openai.com/v1/chat/completions"
     :method :post
     :headers {"Authorization" (str "Bearer " (open-ai-service-account-api-key))
-              "Content-Type" "application/json"}
+              "Content-Type"  "application/json"}
     :body
     (cheshire/generate-string
-     {:model "gpt-5.2"
-      :messages [{:role "system"
+     {:model    "gpt-5.2"
+      :messages [{:role    "system"
                   :content system-prompt}
-                 {:role "user"
+                 {:role    "user"
                   :content (str "Generate for input words " (cheshire/generate-string words))}]
 
       :response_format
@@ -55,41 +55,41 @@ Return only the JSON object without additional text.")
              {:type "object"
               :properties
               {"value"
-               {:type "string"
+               {:type        "string"
                 :description "A German sentence using the word."}
 
                "translation"
-               {:type "string"
+               {:type        "string"
                 :description "Russian translation of the sentence."}
 
                "structure"
-               {:type  "array",
-                :description  "A list of triplets containing the used word form, its dictionary form and its translation."
+               {:type "array"
+                :description
+                "A list of triplets containing the used word form, its dictionary form and its translation."
                 :items
-                {:type "object",
+                {:type "object"
                  :properties
                  {:usedForm
-                  {:type  "string",
-                   :description  "The word in its used form."},
+                  {:type        "string"
+                   :description "The word in its used form."}
 
                   :dictionaryForm
-                  {:type  "string",
-                   :description  "The dictionary form of the word."}
+                  {:type        "string"
+                   :description "The dictionary form of the word."}
 
                   :translation
-                  {:type  "string",
-                   :description  "The dictionary form of the word."}}
+                  {:type        "string"
+                   :description "The dictionary form of the word."}}
 
                  :additionalProperties false
-                 :required  ["usedForm", "dictionaryForm", "translation"]}}}
+                 :required ["usedForm" "dictionaryForm" "translation"]}}}
 
               :additionalProperties false
               :required ["value" "translation" "structure"]}]))
          :additionalProperties false
          :required words}
         :strict true}}
-      :top_p 1})}))
-
+      :top_p    1})}))
 
 
 (defn generate-many!
@@ -131,9 +131,8 @@ Return only the JSON object without additional text.")
 
 (defn add-example!
   [db word-id]
-  (let [word ""
+  (let [word    ""
         example (generate-one! word)]))
-
 
 
 (defn refresh!
