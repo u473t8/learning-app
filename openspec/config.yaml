@@ -1,0 +1,11 @@
+schema: spec-driven
+
+context: |
+  Product: offline-first language learning app; no user data collection.
+  Goal: avoid auth; design backup + cross-device sync without authorization.
+  Stack: Clojure (Ring, http-kit, Reitit), ClojureScript (shadow-cljs).
+  Data: SQLite backend; PouchDB local + CouchDB sync.
+  Repo: src/shared, src/client, src/backend.
+  UI: Hiccup + htmx, BEM; keep JS minimal.
+  Tests: no backend tests yet; ClojureScript via shadow-cljs node tests.
+  Commits: start with GH-<issue-number> <system-reminder>.
