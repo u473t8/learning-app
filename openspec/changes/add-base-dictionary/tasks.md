@@ -1,12 +1,12 @@
 ## 0. CouchDB Infrastructure
-- [ ] 0.1 Install CouchDB on production server (latest stable).
-- [ ] 0.2 Configure admin user with systemd encrypted credentials.
-- [ ] 0.3 Create and configure `dictionary-db` with public read-only security.
-- [ ] 0.4 Configure Nginx for CouchDB access with rate limiting.
-- [ ] 0.5 Document CouchDB + infra runbook and verification in `docs/ops/runbook.md` and `docs/ops/verification.md`.
-- [ ] 0.6 Add `learning-app-admin-setup` to centralize admin steps (secrets, deployer key, BORG_REPO, cert issuance, systemd enablement).
-- [ ] 0.7 Make infra deb noninteractive; start services only when required credentials/config exist; remove obsolete checklist.
-- [ ] 0.8 Add CI deploy workflows for infra/app with integration gating and explicit app restart.
+- [x] 0.1 Install CouchDB on production server (latest stable).
+- [x] 0.2 Configure admin user with systemd encrypted credentials.
+- [x] 0.3 Create and configure `dictionary-db` with public read-only security.
+- [x] 0.4 Configure Nginx for CouchDB access with rate limiting.
+- [x] 0.5 Document CouchDB + infra runbook and verification in `docs/ops/runbook.md` and `docs/ops/verification.md`.
+- [x] 0.6 Add `learning-app-admin-setup` to centralize admin steps (secrets, deployer key, BORG_REPO, cert issuance, systemd enablement).
+- [x] 0.7 Make infra deb noninteractive; start services only when required credentials/config exist; remove obsolete checklist.
+- [x] 0.8 Add CI deploy workflows for infra/app with integration gating and explicit app restart.
 
 ## 1. Pre-requisites
 - [x] 1.1 Research CEFR A1-C2 sources and RU translations; document licenses and chosen sources in `docs/dictionary-sources.md`.

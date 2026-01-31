@@ -1,0 +1,42 @@
+name: Deploy Infrastructure
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'infra/production/**'
+
+jobs:
+  integration:
+    uses: ./.github/workflows/integration.yml
+
+  deployment:
+    name: Build Infra Package
+    runs-on: ubuntu-latest
+    environment: deployment
+    needs: integration
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Build infra deb
+        run: mkdir -p target && dpkg-deb --root-owner-group --build infra/production target/learning-app-infra.deb
+
+      - name: Upload infra deb
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.KEY }}
+          source: 'target/learning-app-infra.deb'
+          target: '/tmp/'
+          overwrite: true
+
+      - name: Install infra deb and restart app
+        uses: appleboy/ssh-action@v1.2.4
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.KEY }}
+          script: |
+            set -euo pipefail
+            sudo DEBIAN_FRONTEND=noninteractive dpkg -i /tmp/learning-app-infra.deb || sudo DEBIAN_FRONTEND=noninteractive apt-get -f install -y
+            sudo systemctl restart learning-app-run.service

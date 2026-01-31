@@ -1,7 +1,6 @@
 name: Integration
 on:
-  pull_request:
-  merge_group:
+  workflow_call:
 
 concurrency:
   group: integration-${{ github.workflow }}-${{ github.ref }}

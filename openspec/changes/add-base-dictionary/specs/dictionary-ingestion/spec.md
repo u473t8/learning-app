@@ -155,8 +155,8 @@ Example line (abbreviated):
 {"_id":"sf:hund","type":"surface-form","value":"hund","entries":[{"lemma_id":"lemma:der hund:noun","lemma":"der Hund","rank":30012}]}
 ```
 
-#### Scenario: manifest.json records counts, sizes, and checksums
+#### Scenario: manifest.edn records counts, sizes, and checksums
 - **WHEN** the pipeline completes
-- **THEN** `manifest.json` is written containing:
+- **THEN** `manifest.edn` is written containing:
   - A generation timestamp
   - For each output file: document count, byte size, and SHA-256 checksum

@@ -9,6 +9,7 @@ Use this file to jump to the authoritative configuration files. Load only what y
 
 ## Production runtime
 
+- `infra/production/usr/share/learning-app/admin-setup.sh`
 - `infra/production/etc/systemd/system/learning-app-run.service`
 - `infra/production/etc/systemd/system/learning-app-restart.path`
 - `infra/production/etc/systemd/system/learning-app-restart.service`
@@ -20,5 +21,7 @@ Use this file to jump to the authoritative configuration files. Load only what y
 
 ## Documentation
 
+- `docs/ops/runbook.md`
 - `docs/ops/server-configuration.md`
+- `docs/ops/verification.md`
 - `readme.md`

@@ -43,6 +43,19 @@ CouchDB will hash the password on first start.
 
 > **Note:** The password `3434` matches the default in `src/shared/db.cljc`. For production, use a strong password.
 
+#### Dictionary Database Setup
+
+After CouchDB is running, create the `dictionary-db` database and configure it for public read access:
+
+```bash
+curl -X PUT http://admin:3434@localhost:5984/dictionary-db
+curl -X PUT http://admin:3434@localhost:5984/dictionary-db/_security \
+  -H "Content-Type: application/json" \
+  -d '{"admins":{"names":["admin"],"roles":[]},"members":{"names":[],"roles":[]}}'
+```
+
+This matches the production configuration: anyone can read, only the admin can write.
+
 ## Setup Steps
 
 ### 1. Install npm dependencies

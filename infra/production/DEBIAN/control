@@ -3,4 +3,4 @@ Version: 1.0
 Architecture: all
 Maintainer: Petr Maslov <petrmaslov@petrmaslov.ru>, Shundeev Egor <shundeevegor@gmail.com>
 Description: Server Setup for Learning App
-Depends: systemd, nginx, borgbackup, certbot
+Depends: systemd, nginx, borgbackup, certbot, python3-certbot-nginx, couchdb, openjdk-21-jre-headless, sqlite3, curl

@@ -1,16 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Prompt admin for secrets and store securely
-mkdir -p /etc/credstore.encrypted
-if [ ! -f /etc/credstore.encrypted/borg-passphrase ]; then
-    systemd-ask-password -n "Enter encryption password for BorgBackup" \
-        | systemd-creds --name=borg-passphrase encrypt - /etc/credstore.encrypted/borg-passphrase
-fi
-if [ ! -f /etc/credstore.encrypted/openai_api_key ]; then
-    systemd-ask-password -n "Enter API key for OpenAI" \
-        | systemd-creds --name=openai_api_key encrypt - /etc/credstore.encrypted/openai_api_key
-fi
+warn() {
+    echo "WARN: $*" >&2
+}
+
+CRED_DIR="/etc/credstore.encrypted"
+mkdir -p "${CRED_DIR}"
+chmod 700 "${CRED_DIR}"
 
 # Create users
 systemd-sysusers
@@ -30,11 +27,6 @@ fi
 # Enable and start nginx config
 nginx -t && systemctl reload nginx || systemctl start nginx
 
-# Issue Let's Encrypt certificates interactively
-if ! certbot certificates | grep -q sprecha.de; then
-    certbot --nginx -d sprecha.de -d www.sprecha.de
-fi
-
 # Ensure nginx uses root-only cert paths when certs exist.
 if [ -f /etc/nginx/sites-available/learning-app.conf ]; then
     sed -i 's#/etc/letsencrypt/live/sprecha.de/fullchain.pem#/etc/nginx/ssl/sprecha.de/fullchain.pem#g' /etc/nginx/sites-available/learning-app.conf
@@ -45,9 +37,67 @@ if [ -f /etc/letsencrypt/live/sprecha.de/fullchain.pem ]; then
     /etc/letsencrypt/renewal-hooks/deploy/learning-app-nginx.sh
 fi
 
+# Enable CouchDB and configure admin
+systemctl enable --now couchdb.service
+
+# Wait for CouchDB to become available
+for i in $(seq 1 30); do
+    curl -sf http://127.0.0.1:5984/ >/dev/null && break
+    sleep 1
+done
+
+if ! curl -sf http://127.0.0.1:5984/ >/dev/null 2>&1; then
+    echo "ERROR: CouchDB did not start within 30 seconds" >&2
+    exit 1
+fi
+
+if [ -f "${CRED_DIR}/couchdb_admin_password" ]; then
+    # Set admin password from encrypted credential if not already configured
+    COUCH_PASS=$(systemd-creds --name=couchdb_admin_password decrypt "${CRED_DIR}/couchdb_admin_password" -)
+    if curl -sf http://127.0.0.1:5984/_node/_local/_config/admins >/dev/null 2>&1; then
+        # CouchDB is in admin party mode (no admin set) -- create admin
+        curl -sf -X PUT http://127.0.0.1:5984/_node/_local/_config/admins/admin \
+            -d "\"${COUCH_PASS}\"" >/dev/null 2>&1 || true
+    fi
+
+    # Create dictionary-db if it does not exist
+    if ! curl -sf -u "admin:${COUCH_PASS}" http://127.0.0.1:5984/dictionary-db >/dev/null 2>&1; then
+        curl -sf -X PUT -u "admin:${COUCH_PASS}" http://127.0.0.1:5984/dictionary-db >/dev/null
+    fi
+
+    # Configure dictionary-db as public read-only (no authentication required for reads)
+    curl -sf -X PUT -u "admin:${COUCH_PASS}" \
+        http://127.0.0.1:5984/dictionary-db/_security \
+        -H "Content-Type: application/json" \
+        -d '{"admins":{"names":["admin"],"roles":[]},"members":{"names":[],"roles":[]}}' \
+        >/dev/null
+else
+    warn "Missing couchdb_admin_password; skipping CouchDB admin and dictionary-db setup"
+fi
+
 # Enable and start application services
 systemctl daemon-reload
-systemctl enable --now learning-app-run.service
-systemctl enable --now learning-app-backup-db.timer
 systemctl enable --now learning-app-restart.path
 systemctl enable --now learning-app-certbot.timer
+
+has_openai_env=false
+if grep -qs '^OPENAI_API_KEY=' /etc/learning-app/environment /etc/environment.d/learning-app.conf; then
+    has_openai_env=true
+fi
+
+if [ -f "${CRED_DIR}/openai_api_key" ] || [ "${has_openai_env}" = true ]; then
+    systemctl enable --now learning-app-run.service
+else
+    warn "Missing OpenAI credential; not starting learning-app-run.service"
+fi
+
+has_borg_repo=false
+if grep -qs '^BORG_REPO=' /etc/learning-app/environment; then
+    has_borg_repo=true
+fi
+
+if [ -f "${CRED_DIR}/borg-passphrase" ] && [ "${has_borg_repo}" = true ]; then
+    systemctl enable --now learning-app-backup-db.timer
+else
+    warn "Missing borg-passphrase or BORG_REPO; not starting learning-app-backup-db.timer"
+fi
