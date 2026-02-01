@@ -47,7 +47,7 @@
    :total-lines n, :parse-errors n}."
   [lines]
   (reduce (fn [acc ^String line]
-            (when (zero? (mod (:total-lines acc) 100000))
+            (when (zero? (mod (:total-lines acc) 10000))
               (print (format "\r  Lines read: %,d " (:total-lines acc)))
               (flush))
             (let [acc (update acc :total-lines inc)]
@@ -93,6 +93,10 @@
   [merged-entries goethe-index timestamp]
   (let [sorted (sort-by (fn [e] [(:word e) (:pos e)]) (vals merged-entries))]
     (reduce (fn [acc kentry]
+              (let [processed (+ (:entry-count acc) (:skip-count acc))]
+                (when (zero? (mod processed 10000))
+                  (print (format "\r  Entries processed: %,d " processed))
+                  (flush)))
               (let [dict-entry (transform/dictionary-entry kentry goethe-index timestamp)]
                 (if dict-entry
                   (-> acc

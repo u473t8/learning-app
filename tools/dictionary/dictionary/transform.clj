@@ -11,6 +11,22 @@
    "b1" 10000})
 
 
+(def ^:private allowed-pos
+  #{"adj"
+    "adv"
+    "conj"
+    "intj"
+    "name"
+    "noun"
+    "num"
+    "particle"
+    "phrase"
+    "postp"
+    "prep"
+    "pron"
+    "verb"})
+
+
 (defn- compute-rank
   "Compute rank for an entry. Higher = more important."
   [cefr-level sense-count translation-count]
@@ -30,35 +46,36 @@
 (defn dictionary-entry
   "Build a dictionary-entry map from a merged Kaikki entry, or nil if no Russian translations."
   [kaikki-entry goethe-index timestamp]
-  (let [word         (:word kaikki-entry)
-        pos          (str/lower-case (or (:pos kaikki-entry) "unknown"))
-        gender       (when (= "noun" pos) (kaikki/extract-gender kaikki-entry))
-        value        (entry-value word pos gender)
-        norm         (normalize-german value)
-        id           (str "lemma:" norm ":" pos)
-        translations (kaikki/russian-translations kaikki-entry)
-        senses       (:senses kaikki-entry)
-        sense-count  (count senses)
-        trans-count  (count translations)
-        cefr         (goethe/cefr-level goethe-index word)
-        rank         (compute-rank cefr sense-count trans-count)
-        forms        (kaikki/inflected-forms kaikki-entry)]
-    (when (and (seq translations)
-               (not (and (= "name" pos) (nil? cefr))))
-      {:_id         id
-       :type        "dictionary-entry"
-       :value       value
-       :pos         pos
-       :rank        rank
-       :translation translations
-       :forms       forms
-       :meta        {:normalized-value norm
-                     :cefr-level       cefr
-                     :gender           gender
-                     :sense-count      sense-count
-                     :source           "kaikki-enwiktionary"}
-       :created-at  timestamp
-       :modified-at timestamp})))
+  (let [word   (:word kaikki-entry)
+        pos    (str/lower-case (or (:pos kaikki-entry) "unknown"))
+        gender (when (= "noun" pos) (kaikki/extract-gender kaikki-entry))]
+    (when (allowed-pos pos)
+      (let [value        (entry-value word pos gender)
+            norm         (normalize-german value)
+            id           (str "lemma:" norm ":" pos)
+            translations (kaikki/russian-translations kaikki-entry)
+            senses       (:senses kaikki-entry)
+            sense-count  (count senses)
+            trans-count  (count translations)
+            cefr         (goethe/cefr-level goethe-index word)
+            rank         (compute-rank cefr sense-count trans-count)
+            forms        (kaikki/inflected-forms kaikki-entry)]
+        (when (and (seq translations)
+                   (not (and (= "name" pos) (nil? cefr))))
+          {:_id         id
+           :type        "dictionary-entry"
+           :value       value
+           :pos         pos
+           :rank        rank
+           :translation translations
+           :forms       forms
+           :meta        {:normalized-value norm
+                         :cefr-level       cefr
+                         :gender           gender
+                         :sense-count      sense-count
+                         :source           "kaikki-enwiktionary"}
+           :created-at  timestamp
+           :modified-at timestamp})))))
 
 
 (defn- bare-word
