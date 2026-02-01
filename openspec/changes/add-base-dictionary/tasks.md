@@ -11,7 +11,7 @@
 ## 1. Pre-requisites
 - [x] 1.1 Research CEFR A1-C2 sources and RU translations; document licenses and chosen sources in `docs/dictionary-sources.md`.
 - [x] 1.2 Implement a dictionary ingestion script that downloads source data from Kaikki (enwiktionary) and Goethe-Institut CEFR word lists (via sprach-o-mat), outputs JSONL for `dictionary-entry` and `surface-form` plus a manifest (counts, bytes, checksum).
-- [ ] 1.3 Implement a CouchDB import pipeline that reads JSONL files and imports to `dictionary-db` with size metrics.
+- [x] 1.3 Implement a CouchDB import pipeline that reads JSONL files and imports to `dictionary-db` with size metrics.
 
 ## 2. Database Split
 - [ ] 2.1 Split client storage into `user-db`, `device-db`, and `dictionary-db`; add a one-time migration from `local-db`.

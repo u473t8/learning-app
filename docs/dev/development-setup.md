@@ -86,6 +86,18 @@ curl http://localhost:5984/
 
 CouchDB web interface (Fauxton) is available at: http://localhost:5984/_utils/
 
+### 3.5 Generate + import dictionary (before running the server)
+
+Do this after CouchDB is up and before starting the backend:
+
+```bash
+clj -M:dictionary
+clj -T:build dictionary-import
+COUCHDB_URL=http://localhost:5984 COUCHDB_PASS=3434 java -jar target/dictionary-import.jar --input-dir resources/dictionary
+```
+
+Add `--reset` only if you need to replace an existing `dictionary-db`.
+
 ### 4. Start shadow-cljs (ClojureScript compiler)
 
 ```bash
