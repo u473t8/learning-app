@@ -14,7 +14,8 @@
 - [x] 1.3 Implement a CouchDB import pipeline that reads JSONL files and imports to `dictionary-db` with size metrics.
 
 ## 2. Database Split
-- [ ] 2.1 Split client storage into `user-db`, `device-db`, and `dictionary-db`; add a one-time migration from `local-db`.
+- [x] 2.1 Split client storage into `user-db`, `device-db`, and `dictionary-db`; add a one-time migration from `local-db`.
+  - Plan: `openspec/changes/add-base-dictionary/database-split-plan.md`.
 
 ## 3. Task Runner Updates
 - [ ] 3.1 Update task runner to use `device-db` and task payloads via `data`; update existing tasks accordingly.

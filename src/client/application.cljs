@@ -1,6 +1,7 @@
 (ns application
   (:require
-   [db :as db]
+   [db-migrations :as db-migrations]
+   [dbs :as dbs]
    [domain.vocabulary :as domain.vocabulary]
    [examples :as examples]
    [hiccup :as hiccup]
@@ -54,6 +55,27 @@
      [:div#app body]]]))
 
 
+(defn- request-path
+  [request]
+  (let [uri (:uri request)
+        qs  (:query-string request)]
+    (if (seq qs)
+      (str uri "?" qs)
+      uri)))
+
+
+(defn- migration-shell
+  [path {:keys [status]}]
+  [:div.migration-shell
+   {:hx-get     path
+    :hx-trigger "every 2s"
+    :hx-target  "#app"
+    :hx-swap    "innerHTML"}
+   [:p "Updating data..."]
+   (when (= status :failed)
+     [:p "Retrying migration soon."])])
+
+
 ;;
 ;; Routes
 ;;
@@ -74,29 +96,58 @@
   "Injects database instance into request."
   {:name  ::db-interceptor
    :enter (fn [ctx]
-            (assoc-in ctx [:request :db] (db/use "local-db")))})
+            (if (not= :done (:migration/status ctx))
+              ctx
+              (update ctx
+                      :request       assoc
+                      :user-db       (dbs/user-db)
+                      :device-db     (dbs/device-db)
+                      :dictionary-db (dbs/dictionary-db))))})
+
+
+(def migration-start-interceptor
+  {:name  ::migration-start-interceptor
+   :enter (fn [ctx]
+            (db-migrations/ensure-migrated!)
+            (assoc ctx :migration/status (db-migrations/migration-status)))})
+
+
+(def migration-shell-interceptor
+  {:name  ::migration-shell-interceptor
+   :enter (fn [ctx]
+            (let [status (or (:migration/status ctx)
+                             (db-migrations/migration-status))]
+              (if (= :done status)
+                ctx
+                (let [path (request-path (:request ctx))]
+                  (-> ctx
+                      ;; Short-circuit remaining interceptors
+                      (update :queue empty)
+                      (assoc :response
+                             {:status    200
+                              :html/body (migration-shell path {:status status})}))))))})
 
 
 (def ui-routes
   [[""
     ["/home"
-     {:get (fn [{:keys [db]}]
-             (p/let [word-count (vocabulary/count db)]
+     {:get (fn [{:keys [user-db]}]
+             (p/let [word-count (vocabulary/count user-db)]
                {:html/body (views.home/home {:word-count word-count})}))}]
 
     ["/words"
-     {:head (fn [{:keys [db]}]
-              (p/let [total (vocabulary/count db)]
+     {:head (fn [{:keys [user-db]}]
+              (p/let [total (vocabulary/count user-db)]
                 {:status  200
                  :headers {"X-Total-Count" (str total)}}))
 
-      :get  (fn [{:keys [db params headers]}]
+      :get  (fn [{:keys [user-db params headers]}]
               (let [{:keys [pages search] :or {pages 1}} params
                     page-size   10
                     limit       (-> pages js/parseInt (* page-size) inc)
                     htmx-target (get headers "hx-target")]
-                (p/let [words (vocabulary/list db {:limit limit :search search})
-                        total (vocabulary/count db)]
+                (p/let [words (vocabulary/list user-db {:limit limit :search search})
+                        total (vocabulary/count user-db)]
                   {:headers   {"X-Total-Count" (str total)}
                    :html/body (if (= htmx-target "word-list")
                                 (views.word/word-list
@@ -107,51 +158,51 @@
                                 (views.word/words-page {:empty? (zero? total)}))
                    :status    200})))
 
-      :post (fn [{:keys [db params]}]
+      :post (fn [{:keys [user-db params]}]
               (let [{:keys [value translation]} params
                     result (domain.vocabulary/validate-new-word value translation)]
                 (if-let [error (:error result)]
                   {:html/body (views.word/validation-error-inputs error)
                    :status    400}
-                  (p/let [word-id (vocabulary/add! db value translation)]
+                  (p/let [word-id (vocabulary/add! user-db value translation)]
                     (examples/create-fetch-task! word-id)
                     {:status 201}))))}]
 
     ["/words-count"
-     {:get (fn [{:keys [db]}]
-             (p/let [total (vocabulary/count db)
+     {:get (fn [{:keys [user-db]}]
+             (p/let [total (vocabulary/count user-db)
                      class (if (zero? total) "word-count--empty" "word-count--ready")]
                {:html/body [:span#word-count {:class class} (str total)]
                 :status    200}))}]
 
     ["/words/:id"
-     {:get    (fn [{:keys [db path-params params]}]
+     {:get    (fn [{:keys [user-db path-params params]}]
                 (let [word-id (:id path-params)
                       edit?   (= "true" (:edit params))]
-                  (p/let [word (vocabulary/get db word-id)]
+                  (p/let [word (vocabulary/get user-db word-id)]
                     (if word
                       {:html/body (views.word/word-list-item word {:editing? edit?})
                        :status    200}
                       {:status 404}))))
 
-      :put    (fn [{:keys [db path-params params]}]
+      :put    (fn [{:keys [user-db path-params params]}]
                 (let [word-id (:id path-params)
                       {:keys [value translation]} params
                       result  (domain.vocabulary/validate-word-update
                                {:word-id word-id :value value :translation translation})]
                   (if-let [error (:error result)]
                     {:status 400 :body error}
-                    (p/let [word (vocabulary/update! db word-id value translation)]
+                    (p/let [word (vocabulary/update! user-db word-id value translation)]
                       (if word
                         {:html/body (views.word/word-list-item word)
                          :status    200}
                         {:status 404})))))
 
-      :delete (fn [{:keys [db path-params]}]
+      :delete (fn [{:keys [user-db path-params]}]
                 (let [word-id (:id path-params)]
                   (p/do
-                    (vocabulary/delete! db word-id)
-                    (p/let [total (vocabulary/count db)]
+                    (vocabulary/delete! user-db word-id)
+                    (p/let [total (vocabulary/count user-db)]
                       (if (zero? total)
                         {:headers   {"HX-Retarget" "#app" "HX-Reswap" "innerHTML"}
                          :html/body (views.word/words-page {:empty? true})
@@ -159,8 +210,8 @@
                         {:status 200})))))}]
 
     ["/lesson"
-     {:get    (fn [{:keys [db]}]
-                (p/let [{:keys [lesson-state error]} (lesson/ensure! db {:trial-selector :random})]
+     {:get    (fn [{:keys [user-db device-db]}]
+                (p/let [{:keys [lesson-state error]} (lesson/ensure! user-db device-db {:trial-selector :random})]
                   (cond
                     lesson-state
                     {:html/body (views.lesson/page lesson-state) :status 200}
@@ -171,17 +222,17 @@
                     :else
                     (throw (ex-info "Failed to create lesson" {:error error})))))
 
-      :delete (fn [{:keys [db]}]
-                (p/let [_ (lesson/finish! db)
-                        word-count (vocabulary/count db)]
+      :delete (fn [{:keys [user-db device-db]}]
+                (p/let [_ (lesson/finish! device-db)
+                        word-count (vocabulary/count user-db)]
                   {:headers   {"HX-Push-Url" "/home"}
                    :html/body (views.home/home {:word-count word-count})
                    :status    200}))}]
 
     ["/lesson/answer"
-     {:post (fn [{:keys [db params]}]
+     {:post (fn [{:keys [user-db device-db params]}]
               (let [answer (:answer params)]
-                (p/let [{:keys [lesson-state]} (lesson/check-answer! db answer)]
+                (p/let [{:keys [lesson-state]} (lesson/check-answer! user-db device-db answer)]
                   (if lesson-state
                     (let [{:keys [challenge progress footer]} (presenter.lesson/page-props lesson-state)]
                       {:html/body (list
@@ -192,8 +243,8 @@
                     {:status 404}))))}]
 
     ["/lesson/next"
-     {:post (fn [{:keys [db]}]
-              (p/let [{:keys [lesson-state]} (lesson/advance! db)]
+     {:post (fn [{:keys [device-db]}]
+              (p/let [{:keys [lesson-state]} (lesson/advance! device-db)]
                 (if lesson-state
                   (let [{:keys [challenge progress]}
                         (presenter.lesson/page-props lesson-state)]
@@ -210,11 +261,13 @@
    (http/router
     ui-routes
 
-    {:data {:interceptors [db-interceptor
+    {:data {:interceptors [migration-start-interceptor
+                           db-interceptor
                            (parameters/parameters-interceptor)
                            (keyword-parameters/keyword-parameters-interceptor)
                            (hiccup/interceptor {:layout-fn nil})
-                           page-layout-interceptor]}})
+                           page-layout-interceptor
+                           migration-shell-interceptor]}})
 
    (constantly {:status 404 :body ""})
 

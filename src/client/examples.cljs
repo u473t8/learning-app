@@ -74,21 +74,20 @@
 
 
 (defmethod tasks/execute-task "example-fetch"
-  [{:keys [word-id]} db]
-  (p/let [word-doc (db/get db word-id)]
+  [{:keys [word-id]} {:keys [user-db device-db]}]
+  (p/let [word-doc (db/get user-db word-id)]
     (if-not word-doc
       (do
         (log/warn :example-fetch/word-not-found {:word-id word-id})
-        true) ; Word deleted, consider task done
+        ;; Word deleted, consider task done
+        true)
 
       (p/catch
-        (p/let [example (fetch-one (:value word-doc))]
-          (save-example! db word-id (:value word-doc) example)
-          true)
+       (p/let [example (fetch-one (:value word-doc))]
+         (save-example! device-db word-id (:value word-doc) example)
+         true)
 
-        (fn [err]
-          (log/warn :example-fetch/failed {:word-id word-id :error (ex-message err)})
-          false)))))
-
-
-; Return false to trigger retry
+       (fn [err]
+         (log/warn :example-fetch/failed {:word-id word-id :error (ex-message err)})
+         ;; Return false to trigger retry
+         false)))))

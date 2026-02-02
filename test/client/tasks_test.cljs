@@ -25,7 +25,7 @@
 
 
 (defn- with-mocked-env
-  "Sets up test DB and utilities, calls (f context), returns promise."
+  "Sets up test DB and utilities, calls (f dbs), returns promise."
   [opts f]
   (let [now-ms  (or (:now-ms opts) 1000)
         now-iso (or (:now-iso opts) (utils/ms->iso now-ms))
@@ -33,18 +33,19 @@
     (db-fixtures/with-test-db
      test-db-name
      (fn [db]
-       (p/with-redefs [db/use        (constantly db)
-                       utils/now-ms  (constantly now-ms)
-                       utils/now-iso (constantly now-iso)
-                       sut/online?   (constantly online?)]
-         (p/let [_ (p/catch
-                     (db/create-index
-                      db
-                      [:type :run-at :created-at]
-                      {:name "by-type-run-at-created-at"
-                       :ddoc "by-type-run-at-created-at"})
-                     (fn [_] nil))]
-           (f db)))))))
+       (let [dbs {:device-db db :user-db db}]
+         (p/with-redefs [db/use        (constantly db)
+                         utils/now-ms  (constantly now-ms)
+                         utils/now-iso (constantly now-iso)
+                         sut/online?   (constantly online?)]
+           (p/let [_ (p/catch
+                       (db/create-index
+                        db
+                        [:type :run-at :created-at]
+                        {:name "by-type-run-at-created-at"
+                         :ddoc "by-type-run-at-created-at"})
+                       (fn [_] nil))]
+             (f dbs))))))))
 
 
 (defn- get-docs
@@ -82,17 +83,17 @@
 
 
 (defmethod sut/execute-task "succeed-task"
-  [_task _db]
+  [_task _dbs]
   (p/resolved true))
 
 
 (defmethod sut/execute-task "fail-task"
-  [_task _db]
+  [_task _dbs]
   (p/resolved false))
 
 
 (defmethod sut/execute-task "error-task"
-  [_task _db]
+  [_task _dbs]
   (p/rejected (ex-info "Boom!" {})))
 
 
@@ -100,7 +101,7 @@
 
 
 (defmethod sut/execute-task "tracking-task"
-  [task _db]
+  [task _dbs]
   (swap! handled-tasks conj (:_id task))
   (p/resolved true))
 
@@ -146,38 +147,38 @@
 (deftest run-cycle-with-empty-queue-completes
   (async-testing "`run-cycle!` succeeds when queue is empty"
     (with-mocked-env {}
-      (fn [db]
+      (fn [{:keys [device-db] :as dbs}]
         (p/do
-          (#'sut/run-cycle! db)
-          (p/let [docs (get-docs db)]
+          (#'sut/run-cycle! dbs)
+          (p/let [docs (get-docs device-db)]
             (is (empty? docs))))))))
 
 
 (deftest run-cycle-removes-successful-tasks
   (async-testing "`run-cycle!` removes tasks after success"
     (with-mocked-env {}
-      (fn [db]
+      (fn [{:keys [device-db] :as dbs}]
         (p/do
           (sut/create-task! "succeed-task" "word-1")
           (sut/create-task! "succeed-task" "word-2")
           (sut/create-task! "succeed-task" "word-3")
 
-          (#'sut/run-cycle! db)
+          (#'sut/run-cycle! dbs)
 
-          (p/let [tasks (get-tasks-by-type db "succeed-task")]
+          (p/let [tasks (get-tasks-by-type device-db "succeed-task")]
             (is (empty? tasks))))))))
 
 
 (deftest run-cycle-tracks-handled-tasks
   (async-testing "`run-cycle!` invokes handler for each task"
     (with-mocked-env {}
-      (fn [db]
+      (fn [dbs]
         (reset! handled-tasks [])
         (p/do
           (sut/create-task! "tracking-task" "word-1")
           (sut/create-task! "tracking-task" "word-2")
 
-          (#'sut/run-cycle! db)
+          (#'sut/run-cycle! dbs)
 
           (is (= 2 (count @handled-tasks))))))))
 
@@ -185,13 +186,13 @@
 (deftest run-cycle-marks-failed-tasks-for-retry
   (async-testing "`run-cycle!` schedules retry on failure"
     (with-mocked-env {:now-ms 1000}
-      (fn [db]
+      (fn [{:keys [device-db] :as dbs}]
         (p/do
           (sut/create-task! "fail-task" "word-1")
 
-          (#'sut/run-cycle! db)
+          (#'sut/run-cycle! dbs)
 
-          (p/let [tasks (get-tasks-by-type db "fail-task")
+          (p/let [tasks (get-tasks-by-type device-db "fail-task")
                   task  (first tasks)]
             (is (= 1 (count tasks)))
             (is (= 1 (:attempts task)))
@@ -201,13 +202,13 @@
 (deftest run-cycle-handles-task-exceptions
   (async-testing "`run-cycle!` catches handler exceptions"
     (with-mocked-env {:now-ms 1000}
-      (fn [db]
+      (fn [{:keys [device-db] :as dbs}]
         (p/do
           (sut/create-task! "error-task" "word-1")
 
-          (#'sut/run-cycle! db)
+          (#'sut/run-cycle! dbs)
 
-          (p/let [tasks (get-tasks-by-type db "error-task")]
+          (p/let [tasks (get-tasks-by-type device-db "error-task")]
             (is (= 1 (count tasks)))
             (is (= 1 (:attempts (first tasks))))))))))
 
@@ -215,14 +216,14 @@
 (deftest run-cycle-dead-letters-unknown-task-types
   (async-testing "`run-cycle!` dead-letters unknown task types"
     (with-mocked-env {}
-      (fn [db]
+      (fn [{:keys [device-db] :as dbs}]
         (p/do
           (sut/create-task! "unknown-task" "word-1")
           (sut/create-task! "unknown-task" "word-2")
 
-          (#'sut/run-cycle! db)
+          (#'sut/run-cycle! dbs)
 
-          (p/let [dead-letters (get-tasks-by-status db "failed")]
+          (p/let [dead-letters (get-tasks-by-status device-db "failed")]
             (is (= 2 (count dead-letters)))
             (is (every? #(= "unknown-task-type" (:failure-reason %)) dead-letters))))))))
 
@@ -230,14 +231,14 @@
 (deftest run-cycle-skips-when-offline
   (async-testing "`run-cycle!` skips processing when offline"
     (with-mocked-env {:online? false :now 1000}
-      (fn [db]
+      (fn [{:keys [device-db] :as dbs}]
         (p/do
           (sut/create-task! "succeed-task" "word-1")
 
-          (#'sut/run-cycle! db)
+          (#'sut/run-cycle! dbs)
 
-          (p/let [task  (get-task-by-id db "word-1")
-                  tasks (get-tasks-by-type db "succeed-task")]
+          (p/let [task  (get-task-by-id device-db "word-1")
+                  tasks (get-tasks-by-type device-db "succeed-task")]
             (is (some? task))
             (is (= 1 (count tasks)))))))))
 
@@ -245,16 +246,16 @@
 (deftest run-cycle-reacts-to-stop-signal
   (async-testing "`run-cycle!` reacts to stop signal"
     (with-mocked-env {}
-      (fn [db]
+      (fn [{:keys [device-db] :as dbs}]
         (p/do
           (sut/create-task! "succeed-task" "word-1")
 
           (sut/stop!)
 
-          (#'sut/run-cycle! db)
+          (#'sut/run-cycle! dbs)
 
-          (p/let [task  (get-task-by-id db "word-1")
-                  tasks (get-tasks-by-type db "succeed-task")]
+          (p/let [task  (get-task-by-id device-db "word-1")
+                  tasks (get-tasks-by-type device-db "succeed-task")]
             (is (some? task))
             (is (= 1 (count tasks)))))))))
 
@@ -262,10 +263,10 @@
 (deftest run-cycle-only-processes-due-tasks
   (async-testing "`run-cycle!` only processes due tasks"
     (with-mocked-env {:now-ms 1000}
-      (fn [db]
+      (fn [{:keys [device-db] :as dbs}]
         (p/do
           ;; Future task (not due yet)
-          (db/insert db
+          (db/insert device-db
                      {:type       "task"
                       :task-type  "succeed-task"
                       :word-id    "future-word"
@@ -276,8 +277,8 @@
           ;; Due task
           (sut/create-task! "succeed-task" "now-word")
 
-          (#'sut/run-cycle! db)
+          (#'sut/run-cycle! dbs)
 
-          (p/let [tasks (get-tasks-by-type db "succeed-task")]
+          (p/let [tasks (get-tasks-by-type device-db "succeed-task")]
             (is (= 1 (count tasks)))
             (is (= "future-word" (:word-id (first tasks))))))))))

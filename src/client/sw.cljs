@@ -5,6 +5,7 @@
   (:require
    [application :as application]
    [clojure.string :as str]
+   [db-migrations :as db-migrations]
    [lambdaisland.glogi :as log]
    [logging]
    [promesa.core :as p]
@@ -58,6 +59,7 @@
     (waitUntil
      (p/do
        (js/self.clients.claim)
+       (db-migrations/ensure-migrated!)
        (tasks/start!))))))
 
 
