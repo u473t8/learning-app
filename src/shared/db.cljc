@@ -485,6 +485,23 @@
         (PouchDB/sync dbname remote opts)))))
 
 
+#?(:cljs
+   (defn replicate-from
+     ([db]
+      (replicate-from db {}))
+     ([db {:keys [remote-url live retry backoff-ms]
+           :or   {live false retry true backoff-ms 60000}}]
+      (let [dbname (.-name ^js db)
+            remote (or remote-url
+                       (str (.. js/globalThis -location -origin) "/db/" dbname))
+            opts   #js {:live  live
+                        :retry retry
+                        :back_off_function
+                        (fn [delay]
+                          (if (zero? delay) 1000 (min backoff-ms (* 2 delay))))}]
+        (.replicate PouchDB remote dbname opts)))))
+
+
 (comment
 
   #?(:cljs

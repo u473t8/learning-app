@@ -28,8 +28,15 @@
     - Update tests (tasks/examples/migrations) to assert `data` payloads and cover the migration.
 
 ## 4. Dictionary Sync Module
-- [ ] 4.1 Implement background dictionary sync module that checks `dictionary-state` and triggers `PouchDB/replicate.from` on initial load.
-- [ ] 4.2 Implement dictionary loader with public API for initialization and status checks.
+- [x] 4.1 Implement background dictionary sync module that checks `dictionary-state` and triggers `PouchDB/replicate.from` on initial load.
+- [x] 4.2 Implement dictionary loader with public API for initialization and status checks.
+  - Plan:
+    - Add CLJS helper `replicate-from` in `src/shared/db.cljc` for one-way pull replication with default remote URL, retry/backoff, and replication object return.
+    - Implement `dictionary_sync` module with in-memory state (`:idle`/`:syncing`/`:ready`/`:failed`), `loaded?`, and `start-sync!`.
+    - **Dropped** BroadcastChannel leader election — the SW is single-instance, so multi-tab coordination is handled by architecture. PouchDB checkpoints make concurrent replication idempotent.
+    - **Dropped** separate `init!` — redundant; `ensure-loaded!` is the sole public entry point.
+    - Integrate `ensure-loaded!` in SW `activate` handler (`waitUntil` chain after `tasks/start!`) instead of `application.cljs`.
+    - Manual verification: fresh install triggers sync, subsequent starts skip, single SW means only one sync runs across tabs.
 
 ## 5. Autocomplete
 - [ ] 5.0 Extend `db/all-docs` to accept options map (`startkey`, `endkey`, `limit`, `include_docs`).
