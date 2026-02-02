@@ -85,6 +85,36 @@
             :complete))))))
 
 
+(def ^:private task-data-migration-id "migration:task-data-payload")
+
+
+(defn- run-task-data-payload!
+  []
+  (let [device-db (dbs/device-db)]
+    (p/let [marker (db/get device-db task-data-migration-id)]
+      (if marker
+        (do
+          (log/info :db-migrations/already-complete {:id task-data-migration-id})
+          :already-complete)
+        (p/do
+          (p/let [{:keys [docs]} (db/find device-db
+                                          {:selector {:type    "task"
+                                                      :word-id {:$exists true}
+                                                      :data    {:$exists false}}})]
+            (p/doseq [task docs]
+              (db/insert device-db
+                         (-> task
+                             (assoc :data {:word-id (:word-id task)})
+                             (dissoc :word-id)))))
+          (db/insert device-db
+                     {:_id          task-data-migration-id
+                      :type         "migration"
+                      :migration-id "task-data-payload"
+                      :created-at   (utils/now-iso)})
+          (log/info :db-migrations/complete {:id task-data-migration-id})
+          :complete)))))
+
+
 ;; ---------------------------------------------------------------------------
 ;; Public state & API
 ;; ---------------------------------------------------------------------------
@@ -92,7 +122,9 @@
 
 (def ^:private migrations
   [{:id  "migration:local-db-split"
-    :run #(run-local-db-split!)}])
+    :run #(run-local-db-split!)}
+   {:id  "migration:task-data-payload"
+    :run #(run-task-data-payload!)}])
 
 
 (def ^:private migration-state

@@ -183,7 +183,7 @@
       (fn [dbs]
         (p/let [result (tasks/execute-task
                         {:task-type "example-fetch"
-                         :word-id   "deleted-word"}
+                         :data      {:word-id "deleted-word"}}
                         dbs)]
           (is (true? result)))))))
 
@@ -200,7 +200,7 @@
               (db/insert user-db {:_id "word-123" :type "vocab" :value "Hund"})
               (p/let [result (tasks/execute-task
                               {:task-type "example-fetch"
-                               :word-id   "word-123"}
+                               :data      {:word-id "word-123"}}
                               dbs)]
                 (is (true? result))
                 (p/let [examples (db-queries/fetch-examples device-db)]
@@ -221,7 +221,7 @@
               (db/insert user-db {:_id "word-123" :type "vocab" :value "Hund"})
               (p/let [result (tasks/execute-task
                               {:task-type "example-fetch"
-                               :word-id   "word-123"}
+                               :data      {:word-id "word-123"}}
                               dbs)]
                 (is (false? result))))))
         (fn []

@@ -61,7 +61,7 @@
      (filter
       (fn [task]
         (or (= task-id (:_id task))
-            (= task-id (:word-id task))))
+            (= task-id (get-in task [:data :word-id]))))
       tasks))))
 
 
@@ -113,10 +113,11 @@
 
 (deftest create-task-builds-correct-document
   (let [now-iso "2024-01-01T00:00:00.000Z"
-        task    (sut/create-task "my-type" "word-123" now-iso)]
+        task    (sut/create-task "my-type" {:word-id "word-123"} now-iso)]
     (is (= "task" (:type task)))
     (is (= "my-type" (:task-type task)))
-    (is (= "word-123" (:word-id task)))
+    (is (= {:word-id "word-123"} (:data task)))
+    (is (nil? (:word-id task)))
     (is (= 0 (:attempts task)))
     (is (= now-iso (:run-at task)))
     (is (= now-iso (:created-at task)))))
@@ -159,9 +160,9 @@
     (with-mocked-env {}
       (fn [{:keys [device-db] :as dbs}]
         (p/do
-          (sut/create-task! "succeed-task" "word-1")
-          (sut/create-task! "succeed-task" "word-2")
-          (sut/create-task! "succeed-task" "word-3")
+          (sut/create-task! "succeed-task" {:word-id "word-1"})
+          (sut/create-task! "succeed-task" {:word-id "word-2"})
+          (sut/create-task! "succeed-task" {:word-id "word-3"})
 
           (#'sut/run-cycle! dbs)
 
@@ -175,8 +176,8 @@
       (fn [dbs]
         (reset! handled-tasks [])
         (p/do
-          (sut/create-task! "tracking-task" "word-1")
-          (sut/create-task! "tracking-task" "word-2")
+          (sut/create-task! "tracking-task" {:word-id "word-1"})
+          (sut/create-task! "tracking-task" {:word-id "word-2"})
 
           (#'sut/run-cycle! dbs)
 
@@ -188,7 +189,7 @@
     (with-mocked-env {:now-ms 1000}
       (fn [{:keys [device-db] :as dbs}]
         (p/do
-          (sut/create-task! "fail-task" "word-1")
+          (sut/create-task! "fail-task" {:word-id "word-1"})
 
           (#'sut/run-cycle! dbs)
 
@@ -204,7 +205,7 @@
     (with-mocked-env {:now-ms 1000}
       (fn [{:keys [device-db] :as dbs}]
         (p/do
-          (sut/create-task! "error-task" "word-1")
+          (sut/create-task! "error-task" {:word-id "word-1"})
 
           (#'sut/run-cycle! dbs)
 
@@ -218,8 +219,8 @@
     (with-mocked-env {}
       (fn [{:keys [device-db] :as dbs}]
         (p/do
-          (sut/create-task! "unknown-task" "word-1")
-          (sut/create-task! "unknown-task" "word-2")
+          (sut/create-task! "unknown-task" {:word-id "word-1"})
+          (sut/create-task! "unknown-task" {:word-id "word-2"})
 
           (#'sut/run-cycle! dbs)
 
@@ -233,7 +234,7 @@
     (with-mocked-env {:online? false :now 1000}
       (fn [{:keys [device-db] :as dbs}]
         (p/do
-          (sut/create-task! "succeed-task" "word-1")
+          (sut/create-task! "succeed-task" {:word-id "word-1"})
 
           (#'sut/run-cycle! dbs)
 
@@ -248,7 +249,7 @@
     (with-mocked-env {}
       (fn [{:keys [device-db] :as dbs}]
         (p/do
-          (sut/create-task! "succeed-task" "word-1")
+          (sut/create-task! "succeed-task" {:word-id "word-1"})
 
           (sut/stop!)
 
@@ -269,16 +270,16 @@
           (db/insert device-db
                      {:type       "task"
                       :task-type  "succeed-task"
-                      :word-id    "future-word"
+                      :data       {:word-id "future-word"}
                       :run-at     (utils/ms->iso 9999)
                       :created-at (utils/ms->iso 0)
                       :attempts   0})
 
           ;; Due task
-          (sut/create-task! "succeed-task" "now-word")
+          (sut/create-task! "succeed-task" {:word-id "now-word"})
 
           (#'sut/run-cycle! dbs)
 
           (p/let [tasks (get-tasks-by-type device-db "succeed-task")]
             (is (= 1 (count tasks)))
-            (is (= "future-word" (:word-id (first tasks))))))))))
+            (is (= "future-word" (get-in (first tasks) [:data :word-id])))))))))

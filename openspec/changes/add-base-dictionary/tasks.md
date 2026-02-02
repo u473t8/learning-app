@@ -18,7 +18,14 @@
   - Plan: `openspec/changes/add-base-dictionary/database-split-plan.md`.
 
 ## 3. Task Runner Updates
-- [ ] 3.1 Update task runner to use `device-db` and task payloads via `data`; update existing tasks accordingly.
+- [x] 3.1 Update task runner to use `device-db` and task payloads via `data`; update existing tasks accordingly.
+  - Plan:
+    - Update task doc shape to use `data` payloads; remove top-level `word-id` usage in task creation/handlers.
+    - Add a migration step that rewrites legacy task docs in `device-db`:
+      - If a task lacks `data` and has `word-id`, set `data` to `{:word-id <value>}` and remove `word-id`.
+      - Keep the migration idempotent by skipping tasks that already have `data`.
+    - Update task creation/handlers (example-fetch) to write/read `data`.
+    - Update tests (tasks/examples/migrations) to assert `data` payloads and cover the migration.
 
 ## 4. Dictionary Sync Module
 - [ ] 4.1 Implement background dictionary sync module that checks `dictionary-state` and triggers `PouchDB/replicate.from` on initial load.

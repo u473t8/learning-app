@@ -26,10 +26,10 @@
 
 (defn create-task
   "Create a task document."
-  [task-type word-id now-iso]
+  [task-type data now-iso]
   {:type       "task"
    :task-type  task-type
-   :word-id    word-id
+   :data       data
    :attempts   0
    :run-at     now-iso
    :created-at now-iso})
@@ -44,7 +44,7 @@
   "Execute a task. Dispatches on :task-type.
 
    Arguments:
-     task - the task document (map with :task-type, :word-id, etc.)
+     task - the task document (map with :task-type, :data, etc.)
      dbs  - map with :device-db and :user-db PouchDB instances
 
    Returns a promise that resolves to:
@@ -268,7 +268,7 @@
 
 
 (defn create-task!
-  [task-type word-id]
+  [task-type data]
   (let [db      (dbs/device-db)
         now-iso (utils/now-iso)]
-    (db/insert db (create-task task-type word-id now-iso))))
+    (db/insert db (create-task task-type data now-iso))))

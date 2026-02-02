@@ -127,6 +127,57 @@
 
 
 ;; =============================================================================
+;; run-task-data-payload!
+;; =============================================================================
+
+
+(deftest run-task-data-payload-rewrites-legacy-tasks
+  (async-testing "rewrites legacy tasks with :word-id into :data map"
+    (with-test-dbs
+     (fn [{:keys [device-db]}]
+       (p/do
+         (db/insert device-db {:_id "t1" :type "task" :task-type "example-fetch" :word-id "w1" :attempts 0})
+         (#'sut/run-task-data-payload!)
+         (p/let [task (db/get device-db "t1")]
+           (is (= {:word-id "w1"} (:data task)))
+           (is (nil? (:word-id task)))))))))
+
+
+(deftest run-task-data-payload-skips-already-migrated-tasks
+  (async-testing "leaves tasks that already have :data unchanged"
+    (with-test-dbs
+     (fn [{:keys [device-db]}]
+       (p/do
+         (db/insert device-db {:_id "t2" :type "task" :task-type "example-fetch" :data {:word-id "w2"} :attempts 0})
+         (#'sut/run-task-data-payload!)
+         (p/let [task (db/get device-db "t2")]
+           (is (= {:word-id "w2"} (:data task)))
+           (is (nil? (:word-id task)))))))))
+
+
+(deftest run-task-data-payload-is-idempotent
+  (async-testing "returns :already-complete on second run"
+    (with-test-dbs
+     (fn [{:keys [device-db]}]
+       (p/do
+         (db/insert device-db {:_id "t3" :type "task" :task-type "example-fetch" :word-id "w3" :attempts 0})
+         (#'sut/run-task-data-payload!)
+         (p/let [result (#'sut/run-task-data-payload!)]
+           (is (= :already-complete result))))))))
+
+
+(deftest run-task-data-payload-writes-marker
+  (async-testing "writes migration marker document to device-db"
+    (with-test-dbs
+     (fn [{:keys [device-db]}]
+       (p/do
+         (#'sut/run-task-data-payload!)
+         (p/let [marker (db/get device-db "migration:task-data-payload")]
+           (is (some? marker))
+           (is (= "migration" (:type marker)))))))))
+
+
+;; =============================================================================
 ;; ensure-migrated!
 ;; =============================================================================
 
