@@ -17,7 +17,7 @@
 
 (defn- dictionary-loaded?
   [dict-db]
-  (p/let [doc (db/get dict-db "dictionary-state")]
+  (p/let [doc (db/get dict-db "dictionary-meta")]
     (some? doc)))
 
 

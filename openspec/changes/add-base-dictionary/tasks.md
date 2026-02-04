@@ -39,12 +39,52 @@
     - Manual verification: fresh install triggers sync, subsequent starts skip, single SW means only one sync runs across tabs.
 
 ## 5. Autocomplete
-- [ ] 5.0 Extend `db/all-docs` to accept options map (`startkey`, `endkey`, `limit`, `include_docs`).
-- [ ] 5.1 Add dictionary autocomplete using `allDocs` key-range query on `surface-form` documents and prefill on exact normalized match.
+- [x] 5.0 Extend `db/all-docs` to accept options map (`startkey`, `endkey`, `limit`, `include_docs`).
+- [x] 5.1 Add dictionary autocomplete using `allDocs` key-range query on `surface-form` documents and prefill on exact normalized match.
+  - Plan:
+    - Add `db/all-docs` arities to accept an options map and pass it through to PouchDB/CouchDB; keep existing default call unchanged.
+    - Create a dictionary autocomplete function that:
+      - Normalizes input via `utils/normalize-german`.
+      - Queries `dictionary-db` with `startkey "sf:<norm>"`, `endkey "sf:<norm>\uffff"`, `include_docs true`, `limit 50`.
+      - Flattens `:entries` from matched `surface-form` docs, dedupes by `:lemma-id`, sorts by `:rank` desc, and caps suggestions.
+      - Detects exact normalized match (doc `:value` equals normalized input) to mark a selectable canonical prefill; only replace input when user selects a suggestion.
+    - Add a lightweight manual checklist for: prefix lookup, exact match prefill, case/diacritic insensitivity, and performance sanity.
 
 ## 6. Integration
-- [ ] 6.1 Integrate autocomplete into add-word flow.
-- [ ] 6.2 Initialize dictionary loader in application startup.
+- [x] 6.1 Integrate autocomplete into add-word flow.
+- [x] 6.2 Initialize dictionary loader in application startup.
+
+### 6. Integration (Plan)
+
+- 6.1 Add RESTful dictionary resource endpoint.
+  - Route: `GET /dictionary-entries?prefix=<text>&limit=10`
+  - Use `dictionary/suggest` with `:dictionary-db` from request context.
+  - Return HTML fragment with suggestions + `prefill` metadata.
+- 6.1 Wire autocomplete UI.
+  - Add suggestions container next to the German input in:
+    - `src/client/views/home.cljs` (quick add)
+    - `src/client/views/vocabulary.cljs` (edit mode)
+  - Use a shared helper to avoid duplicate markup unless divergence is needed.
+  - HTMX: `hx-get="/dictionary-entries"`, `hx-trigger="input changed delay:200ms"`,
+    `hx-target` to the suggestions container, send `prefix` from input.
+  - Selection applies canonical value; no auto-prefill on input.
+- 6.2 Dictionary loader startup.
+  - No UI startup hook.
+  - Keep service worker activation (`dictionary-sync/ensure-loaded!`) as the only trigger.
+
+#### 6.x Autocomplete Fixes (UI + Data)
+
+- Fix suggestion list clipping.
+  - `.home__panel` has `overflow: hidden`, which clips the dropdown.
+  - Make the add panel allow overflow when suggestions are open:
+    - Preferred: `.home__panel--add:has(.suggestions:not(:empty)) { overflow: visible; }`
+    - Simpler fallback: `.home__panel--add { overflow: visible; }`
+- Populate translation on selection.
+  - Extend `/dictionary-entries` handler to load `dictionary-entry` docs for suggestions by `lemma-id`.
+  - Attach `translation` (first RU translation, or nil) to each suggestion.
+- Apply translation in UI.
+  - In `views.dictionary/suggestions`, add `data-translation`.
+  - On click: set German input; if translation input is empty, set it from `data-translation`; then focus translation input.
 
 ## 7. Testing
 - [ ] 7.1 Create test documentation for dictionary sync scenarios (fresh install, interruption, offline, no re-sync).

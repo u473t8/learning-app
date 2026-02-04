@@ -428,11 +428,16 @@
 
 
 (defn all-docs
-  "Fetch multiple documents, indexed and sorted by the `_id`."
-  [db]
-  (with-couch-op :couch/all-docs
-    #?(:clj (p/rejected "not implemented yet")
-       :cljs (.allDocs ^js db))))
+  "Fetch multiple documents, indexed and sorted by the `_id`.
+   Accepts an optional opts map: :startkey, :endkey, :limit, :include-docs."
+  ([db]
+   (all-docs db {}))
+  ([db opts]
+   (with-couch-op :couch/all-docs
+     #?(:clj (p/rejected "not implemented yet")
+        :cljs (if (seq opts)
+                (.allDocs ^js db (clj->couch opts))
+                (.allDocs ^js db))))))
 
 
 (defn bulk-docs
@@ -489,8 +494,9 @@
    (defn replicate-from
      ([db]
       (replicate-from db {}))
-     ([db {:keys [remote-url live retry backoff-ms]
-           :or   {live false retry true backoff-ms 60000}}]
+     ([db
+       {:keys [remote-url live retry backoff-ms]
+        :or   {live false retry true backoff-ms 60000}}]
       (let [dbname (.-name ^js db)
             remote (or remote-url
                        (str (.. js/globalThis -location -origin) "/db/" dbname))

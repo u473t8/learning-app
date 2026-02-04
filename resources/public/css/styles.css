@@ -1223,6 +1223,10 @@ Home Page
     overflow: hidden;
 }
 
+.home__panel--add:has(.suggestions:not(:empty)) {
+    overflow: visible;
+}
+
 .home__panel-header {
     display: flex;
     flex-direction: column;
@@ -2406,6 +2410,57 @@ Home Page
     .new-word-form__input--quick {
         width: 100%;
     }
+}
+
+/* ========================================
+   DICTIONARY AUTOCOMPLETE
+   ======================================== */
+
+.autocomplete {
+    flex: 1;
+    position: relative;
+}
+
+.suggestions {
+    background: rgb(var(--color-snow));
+    border: 1px solid rgb(var(--color-swan));
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.1);
+    left: 0;
+    list-style: none;
+    margin: 4px 0 0;
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 4px 0;
+    position: absolute;
+    right: 0;
+    z-index: 10;
+}
+
+.suggestions:empty {
+    display: none;
+}
+
+.suggestions__item {
+    cursor: pointer;
+    font-size: 16px;
+    padding: 10px 14px;
+}
+
+.suggestions__item:hover {
+    background: rgb(var(--color-polar));
+}
+
+.suggestions__item[data-active] {
+    background: rgb(var(--color-polar));
+}
+
+.suggestions__item:active {
+    background: rgb(var(--color-swan));
+}
+
+.suggestions__item[data-exact] {
+    font-weight: 700;
 }
 
 .big-button[disabled] {

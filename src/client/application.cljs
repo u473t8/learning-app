@@ -2,6 +2,7 @@
   (:require
    [db-migrations :as db-migrations]
    [dbs :as dbs]
+   [dictionary :as dictionary]
    [domain.vocabulary :as domain.vocabulary]
    [examples :as examples]
    [hiccup :as hiccup]
@@ -12,6 +13,7 @@
    [reitit.http.interceptors.keyword-parameters :as keyword-parameters]
    [reitit.http.interceptors.parameters :as parameters]
    [reitit.interceptor.sieppari :as sieppari]
+   [views.dictionary :as views.dictionary]
    [views.home :as views.home]
    [views.lesson :as views.lesson]
    [views.vocabulary :as views.word]
@@ -38,9 +40,9 @@
      [:link {:rel "manifest" :href "/manifest.json"}]
      [:link {:rel "stylesheet" :href "/css/styles.css"}]
      [:script {:src "/js/htmx/htmx.min.js" :defer true}]
-     [:script {:src "/js/htmx/idiomorph-ext.min.js" :defer true}]
+     [:script {:src "/js/word-autocomplete.js" :defer true}]
      head]
-    [:body {:hx-ext "morph"}
+    [:body
      [:a.app-logo
       {:href        "/home"
        :hx-get      "/home"
@@ -134,6 +136,17 @@
      {:get (fn [{:keys [user-db]}]
              (p/let [word-count (vocabulary/count user-db)]
                {:html/body (views.home/home {:word-count word-count})}))}]
+
+    ["/dictionary-entries"
+     {:get (fn [{:keys [dictionary-db params]}]
+             (-> (p/let [{:keys [suggestions prefill]}
+                         (dictionary/suggest dictionary-db (:value params))]
+                   {:html/body (views.dictionary/suggestions suggestions prefill)
+                    :status    200})
+                 (p/catch
+                   (fn [_err]
+                     {:html/body (views.dictionary/suggestions [] nil)
+                      :status    200}))))}]
 
     ["/words"
      {:head (fn [{:keys [user-db]}]

@@ -6,7 +6,7 @@
   [{:keys [word-count] :or {word-count 0}}]
   (let [count-class (if (zero? word-count) "word-count--empty" "word-count--ready")]
     [:div.home
-     {:hx-on:htmx:afterSettle "var input = htmx.find('#new-word-value'); if(input){input.focus();}"}
+
      [:header.home__hero
       [:div.home__hero-text
        [:h1.home__title.home__title--sr "Sprecha"]
@@ -32,37 +32,46 @@
           "Список слов"]]
         [:form.new-word-form.new-word-form--quick
          {:hx-on:htmx:after-request
-          "if(event.detail.successful) {this.reset(); htmx.find('#new-word-value').focus(); htmx.trigger(document.body, 'words-changed')}"
+          "if(event.detail.successful && event.detail.elt===this) {this.reset(); htmx.find('#new-word-value').focus(); htmx.trigger(document.body, 'words-changed')}"
           :hx-post         "/words"
           :hx-push-url     "false"
           :hx-swap         "none"
-          :hx-disabled-elt "find .new-word-form__submit"}
-         [:div.new-word-form__row
-          [:input.new-word-form__input.new-word-form__input--quick
-           {:id "new-word-value"
-            :autocapitalize "off"
-            :autocomplete "off"
-            :autocorrect "off"
-            :autofocus "true"
-            :required true
-            :hx-on:change "htmx.find('#new-word-translation').focus()"
-            :hx-on:keydown
-            "if(event.key==='Enter'){event.preventDefault(); htmx.find('#new-word-translation').focus();}"
-            :lang "de"
-            :name "value"
-            :placeholder "Новое слово"}]
-          [:span.new-word-form__arrow
-           "→"]
-          [:input.new-word-form__input.new-word-form__input--quick
-           {:id           "new-word-translation"
-            :autocapitalize "off"
-            :autocomplete "off"
-            :autocorrect  "off"
-            :required     true
-            :hx-on:keydown "if(event.key==='Enter'){event.preventDefault(); this.form.requestSubmit();}"
-            :lang         "ru"
-            :name         "translation"
-            :placeholder  "Перевод"}]]
+          :hx-disabled-elt "find .new-word-form__submit"
+          :hx-disinherit   "hx-disabled-elt"}
+         [:word-autocomplete
+          [:div.new-word-form__row
+           [:div.autocomplete
+            [:input.new-word-form__input.new-word-form__input--quick
+             {:id             "new-word-value"
+              :name           "value"
+              :autocapitalize "off"
+              :autocomplete   "off"
+              :autocorrect    "off"
+              :autofocus      true
+              :data-ac-role   "word"
+              :hx-get         "/dictionary-entries"
+              :hx-include     "this"
+              :hx-sync        "this:replace"
+              :hx-target      "next [data-ac-role='list']"
+              :hx-trigger     "input changed delay:200ms"
+              :hx-swap        "innerHTML"
+              :required       true
+              :lang           "de"
+              :placeholder    "Новое слово"}]
+            [:ul.suggestions
+             {:data-ac-role "list"}]]
+           [:span.new-word-form__arrow
+            "→"]
+           [:input.new-word-form__input.new-word-form__input--quick
+            {:id           "new-word-translation"
+             :name         "translation"
+             :autocapitalize "off"
+             :autocomplete "off"
+             :autocorrect  "off"
+             :data-ac-role "translation"
+             :lang         "ru"
+             :placeholder  "Перевод"
+             :required     true}]]]
          [:button.new-word-form__submit.big-button
           {:type "submit"}
           "ДОБАВИТЬ"]]]]
