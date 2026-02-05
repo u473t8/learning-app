@@ -495,16 +495,18 @@
      ([db]
       (replicate-from db {}))
      ([db
-       {:keys [remote-url live retry backoff-ms]
+       {:keys [remote-url live retry backoff-ms batch-size batches-limit]
         :or   {live false retry true backoff-ms 60000}}]
       (let [dbname (.-name ^js db)
             remote (or remote-url
                        (str (.. js/globalThis -location -origin) "/db/" dbname))
-            opts   #js {:live  live
-                        :retry retry
-                        :back_off_function
-                        (fn [delay]
-                          (if (zero? delay) 1000 (min backoff-ms (* 2 delay))))}]
+            opts   (cond-> #js {:live  live
+                                :retry retry
+                                :back_off_function
+                                (fn [delay]
+                                  (if (zero? delay) 1000 (min backoff-ms (* 2 delay))))}
+                     batch-size    (doto (aset "batch_size" batch-size))
+                     batches-limit (doto (aset "batches_limit" batches-limit)))]
         (.replicate PouchDB remote dbname opts)))))
 
 

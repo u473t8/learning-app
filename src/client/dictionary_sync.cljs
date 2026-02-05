@@ -25,7 +25,7 @@
   [dict-db]
   (p/create
    (fn [resolve reject]
-     (let [repl (db/replicate-from dict-db)]
+     (let [repl (db/replicate-from dict-db {:batch-size 100 :batches-limit 1})]
        (.on repl "complete"
             (fn [info]
               (log/info :dictionary-sync/replication-complete

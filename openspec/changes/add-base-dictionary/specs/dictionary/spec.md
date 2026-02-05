@@ -16,6 +16,21 @@ The system SHALL load dictionary from a public read-only CouchDB database via Po
 - **WHEN** app starts and `dictionary-meta` document exists
 - **THEN** no sync is triggered (dictionary already loaded)
 
+### Requirement: Dictionary sync runs as a task
+The system SHALL schedule dictionary synchronization via the task runner to keep UI responsive.
+
+#### Scenario: Task-based sync scheduling
+- **WHEN** app starts on a device without a local dictionary
+- **THEN** the system enqueues a `dictionary-sync` task (idempotent)
+- **AND** the task starts replication in the background without blocking UI
+
+#### Scenario: Low-pressure replication settings
+- **WHEN** replication is started by the task
+- **THEN** it uses conservative settings to minimize load:
+  - `batch_size: 100`
+  - `batches_limit: 1`
+  - `retry: true` with exponential backoff
+
 ### Requirement: Surface-form documents support autocomplete
 The system SHALL use `surface-form` documents and `allDocs` key-range queries to provide fast prefix matches for autocomplete.
 

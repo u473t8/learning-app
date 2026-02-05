@@ -73,7 +73,7 @@
   - Include `/js/word-autocomplete.js` in base layout and precache in the service worker.
 - 6.2 Dictionary loader startup.
   - No UI startup hook.
-  - Keep service worker activation (`dictionary-sync/ensure-loaded!`) as the only trigger.
+  - Schedule `dictionary-sync` task from SW after `tasks/start!` and avoid blocking `waitUntil`.
 
 #### 6.x Autocomplete Fixes (UI + Data)
 
@@ -89,6 +89,13 @@
   - In `views.dictionary/suggestions`, add `data-translation`.
   - On click/selection: set German input, set translation from `data-translation` when present, then focus translation input.
   - Show translation ghost hint when translation input is empty.
+
+#### 6.y Dictionary Sync (Fire-and-Forget)
+
+- [x] Fire `ensure-loaded!` from SW activate handler without awaiting.
+  - Sync runs in background, doesn't block app startup.
+  - Errors are logged but don't affect activation.
+- [x] Keep `loaded?` function for UI status checks.
 
 ## 7. Testing
 - [x] 7.0 Add automated tests for `dictionary/suggest` (empty input, dedupe, ranking, prefill) in `test/client/dictionary_test.cljs`.

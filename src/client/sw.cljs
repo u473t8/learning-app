@@ -55,14 +55,15 @@
  "activate"
  (fn [event]
    (log/debug :event/activate event)
+   ;; Fire-and-forget: start dictionary sync in background, don't block activation
+   (dictionary-sync/ensure-loaded!)
    (..
     event
     (waitUntil
      (p/do
        (js/self.clients.claim)
        (db-migrations/ensure-migrated!)
-       (tasks/start!)
-       (dictionary-sync/ensure-loaded!))))))
+       (tasks/start!))))))
 
 
 (js/self.addEventListener
