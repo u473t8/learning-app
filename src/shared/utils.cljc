@@ -38,11 +38,11 @@
 
 
 (defn sanitize-text
-  "Remove extra spaces"
+  "Remove punctuation and normalize whitespace"
   [text]
   (-> text
       (or "")
-      ;; (str/replace #"\p{Punct}" " ")
+      (str/replace #"[!\"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~]" " ")
       (str/trim)
       (str/replace #"\s+" " ")))
 
