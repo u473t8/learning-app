@@ -5,7 +5,9 @@
   (:require
    [application :as application]
    [clojure.string :as str]
+   [db :as db]
    [db-migrations :as db-migrations]
+   [dbs :as dbs]
    [dictionary-sync :as dictionary-sync]
    [lambdaisland.glogi :as log]
    [logging]
@@ -34,6 +36,20 @@
 
 
 ;;
+;; Helpers
+;;
+
+
+(defn- set-update-pending!
+  [pending?]
+  (p/let [device-db (dbs/device-db)
+          existing  (db/get device-db "sw-update-pending")
+          doc       (merge {:_id "sw-update-pending" :pending pending?}
+                           (when existing {:_rev (:_rev existing)}))]
+    (db/insert device-db doc)))
+
+
+;;
 ;; Listeners
 ;;
 
@@ -42,13 +58,14 @@
  "install"
  (fn [^InstallEvent event]
    (log/debug :event/install event)
-   ;; TODO: explain why do we use skipWaiting here
-   (js/self.skipWaiting)
+   ;; Don't call skipWaiting - let user control when to update
    (..
     event
     (waitUntil
-     (p/-> (js/caches.open "resources")
-           (.addAll base-precache-urls))))))
+     (p/do
+       (set-update-pending! true)
+       (p/-> (js/caches.open "resources")
+             (.addAll base-precache-urls)))))))
 
 
 (js/self.addEventListener
@@ -61,6 +78,7 @@
     event
     (waitUntil
      (p/do
+       (set-update-pending! false)
        (js/self.clients.claim)
        (db-migrations/ensure-migrated!)
        (tasks/start!))))))
@@ -69,9 +87,11 @@
 (js/self.addEventListener
  "message"
  (fn [event]
-   (when (= "ping" (.. event -data -type))
-     (some-> (.-source event)
-             (.postMessage #js {:type "pong"})))))
+   (case (.. event -data -type)
+     "ping"         (some-> (.-source event)
+                            (.postMessage #js {:type "pong"}))
+     "SKIP_WAITING" (js/self.skipWaiting)
+     nil)))
 
 
 (js/self.addEventListener
@@ -155,10 +175,3 @@
          :else                     (local-handler request)))))))
 
 
-#_{:clojure-lsp/ignore [:clojure-lsp/unused-public-var]}
-
-
-(defn ^:dev/after-load update-registration
-  []
-  (log/debug :dev/after-load "Update service worker")
-  (js/self.registration.update))

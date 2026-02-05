@@ -1,5 +1,6 @@
 (ns application
   (:require
+   [db :as db]
    [db-migrations :as db-migrations]
    [dbs :as dbs]
    [dictionary :as dictionary]
@@ -54,7 +55,8 @@
      [:div#loader.loader
       [:div.loader__list {:style {:--items-count 1}}
        [:div.loader__text "Загружаем..."]]]
-     [:div#app body]]]))
+     [:div#app body]
+     [:script "navigator.serviceWorker&&(navigator.serviceWorker.addEventListener('controllerchange',function(){location.reload()}),navigator.serviceWorker.getRegistration().then(function(r){if(r)r.addEventListener('updatefound',function(){var sw=r.installing;if(sw)sw.addEventListener('statechange',function(){if(sw.state==='installed'&&navigator.serviceWorker.controller)document.body.dispatchEvent(new CustomEvent('sw-update-available'))})})}))"]]]))
 
 
 (defn- request-path
@@ -108,6 +110,16 @@
                       :dictionary-db (dbs/dictionary-db))))})
 
 
+(def sw-update-interceptor
+  "Injects SW update pending flag into request."
+  {:name  ::sw-update-interceptor
+   :enter (fn [ctx]
+            (if (not= :done (:migration/status ctx))
+              ctx
+              (p/let [doc (db/get (dbs/device-db) "sw-update-pending")]
+                (assoc-in ctx [:request :sw/update-pending?] (:pending doc)))))})
+
+
 (def migration-start-interceptor
   {:name  ::migration-start-interceptor
    :enter (fn [ctx]
@@ -134,9 +146,10 @@
 (def ui-routes
   [[""
     ["/home"
-     {:get (fn [{:keys [user-db]}]
+     {:get (fn [{:keys [user-db sw/update-pending?]}]
              (p/let [word-count (vocabulary/count user-db)]
-               {:html/body (views.home/home {:word-count word-count})}))}]
+               {:html/body (views.home/home {:word-count word-count
+                                             :update-pending? update-pending?})}))}]
 
     ["/dictionary-entries"
      {:get (fn [{:keys [dictionary-db params]}]
@@ -277,6 +290,7 @@
 
     {:data {:interceptors [migration-start-interceptor
                            db-interceptor
+                           sw-update-interceptor
                            (parameters/parameters-interceptor)
                            (keyword-parameters/keyword-parameters-interceptor)
                            (hiccup/interceptor {:layout-fn nil})

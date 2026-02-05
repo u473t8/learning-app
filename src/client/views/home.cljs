@@ -3,9 +3,21 @@
 
 
 (defn home
-  [{:keys [word-count] :or {word-count 0}}]
+  [{:keys [word-count update-pending?] :or {word-count 0}}]
   (let [count-class (if (zero? word-count) "word-count--empty" "word-count--ready")]
     [:div.home
+
+     [:div#sw-update-slot
+      {:hx-trigger "sw-update-available from:body"
+       :hx-get     "/home"
+       :hx-select  "#sw-update-slot"
+       :hx-swap    "outerHTML"}
+      (when update-pending?
+        [:div.sw-update-toast
+         [:span "Доступно обновление"]
+         [:button.sw-update-toast__button
+          {:onclick "navigator.serviceWorker.getRegistration().then(function(r){r.waiting&&r.waiting.postMessage({type:'SKIP_WAITING'})})"}
+          "Обновить"]])]
 
      [:header.home__hero
       [:div.home__hero-text
