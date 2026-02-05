@@ -70,7 +70,8 @@
   [path {:keys [status]}]
   [:div.migration-shell
    {:hx-get     path
-    :hx-trigger "every 2s"
+    :hx-trigger "load delay:200ms, every 2s"
+    :hx-sync    "closest .migration-shell:abort"
     :hx-target  "#app"
     :hx-swap    "innerHTML"}
    [:p "Updating data..."]
