@@ -28,7 +28,7 @@
     - Update tests (tasks/examples/migrations) to assert `data` payloads and cover the migration.
 
 ## 4. Dictionary Sync Module
-- [x] 4.1 Implement background dictionary sync module that checks `dictionary-state` and triggers `PouchDB/replicate.from` on initial load.
+- [x] 4.1 Implement background dictionary sync module that checks `dictionary-meta` and triggers `PouchDB/replicate.from` on initial load.
 - [x] 4.2 Implement dictionary loader with public API for initialization and status checks.
   - Plan:
     - Add CLJS helper `replicate-from` in `src/shared/db.cljc` for one-way pull replication with default remote URL, retry/backoff, and replication object return.
@@ -46,9 +46,10 @@
     - Create a dictionary autocomplete function that:
       - Normalizes input via `utils/normalize-german`.
       - Queries `dictionary-db` with `startkey "sf:<norm>"`, `endkey "sf:<norm>\uffff"`, `include_docs true`, `limit 50`.
-      - Flattens `:entries` from matched `surface-form` docs, dedupes by `:lemma-id`, sorts by `:rank` desc, and caps suggestions.
+      - Flattens `:entries` from matched `surface-form` docs, dedupes by `:lemma-id`, sorts with exact matches first and then `:rank` desc, and caps suggestions.
       - Detects exact normalized match (doc `:value` equals normalized input) to mark a selectable canonical prefill; only replace input when user selects a suggestion.
-    - Add a lightweight manual checklist for: prefix lookup, exact match prefill, case/diacritic insensitivity, and performance sanity.
+      - Batch-fetches `dictionary-entry` docs by `lemma-id` and attaches the first RU translation (if present) to each suggestion.
+    - Add a lightweight manual checklist for: prefix lookup, exact match prefill, translation hinting, case/diacritic insensitivity, and performance sanity.
 
 ## 6. Integration
 - [x] 6.1 Integrate autocomplete into add-word flow.
@@ -57,17 +58,19 @@
 ### 6. Integration (Plan)
 
 - 6.1 Add RESTful dictionary resource endpoint.
-  - Route: `GET /dictionary-entries?prefix=<text>&limit=10`
+  - Route: `GET /dictionary-entries?value=<text>`
   - Use `dictionary/suggest` with `:dictionary-db` from request context.
-  - Return HTML fragment with suggestions + `prefill` metadata.
+  - Return HTML fragment with suggestions + `prefill` metadata + `translation` hints.
 - 6.1 Wire autocomplete UI.
   - Add suggestions container next to the German input in:
     - `src/client/views/home.cljs` (quick add)
     - `src/client/views/vocabulary.cljs` (edit mode)
-  - Use a shared helper to avoid duplicate markup unless divergence is needed.
+  - Use a `word-autocomplete` custom element to encapsulate behavior and reset logic.
   - HTMX: `hx-get="/dictionary-entries"`, `hx-trigger="input changed delay:200ms"`,
-    `hx-target` to the suggestions container, send `prefix` from input.
-  - Selection applies canonical value; no auto-prefill on input.
+    `hx-target` to the suggestions container, send `value` from input.
+  - Keyboard UX: arrows move active item; Tab/Enter select; Escape clears.
+  - Selection applies canonical value; translation fills from suggestion when present; no auto-prefill on input.
+  - Include `/js/word-autocomplete.js` in base layout and precache in the service worker.
 - 6.2 Dictionary loader startup.
   - No UI startup hook.
   - Keep service worker activation (`dictionary-sync/ensure-loaded!`) as the only trigger.
@@ -84,9 +87,11 @@
   - Attach `translation` (first RU translation, or nil) to each suggestion.
 - Apply translation in UI.
   - In `views.dictionary/suggestions`, add `data-translation`.
-  - On click: set German input; if translation input is empty, set it from `data-translation`; then focus translation input.
+  - On click/selection: set German input, set translation from `data-translation` when present, then focus translation input.
+  - Show translation ghost hint when translation input is empty.
 
 ## 7. Testing
+- [x] 7.0 Add automated tests for `dictionary/suggest` (empty input, dedupe, ranking, prefill) in `test/client/dictionary_test.cljs`.
 - [ ] 7.1 Create test documentation for dictionary sync scenarios (fresh install, interruption, offline, no re-sync).
 - [ ] 7.2 Create test documentation for autocomplete scenarios (prefix lookup, exact match, case insensitivity, performance).
 - [ ] 7.3 Create regression checklist for existing flows after database split.

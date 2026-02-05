@@ -43,23 +43,31 @@ The app needs a predefined German dictionary to support autocomplete, canonical 
 
 - Surface-form docs inline entry data:
   - Each `sf:` doc contains `entries[]` with denormalized `{lemma-id, lemma, rank}`.
-  - Eliminates N+1 lookups during autocomplete (one query returns display-ready data).
+  - Fast prefix lookup and deduplication happen from the surface-form query.
+  - Translation enrichment uses a single batch `allDocs` lookup by `lemma-id` (no per-suggestion requests).
   - Safe because dictionary is server-generated, read-only on client — no consistency risk.
 
 - CEFR-based ranking:
   - Each entry includes a `rank` field (integer).
   - Computed server-side from CEFR level (A1 highest) and optionally word frequency.
-  - Autocomplete results sorted by rank after deduplication.
+  - Autocomplete results sorted with exact matches first, then by rank after deduplication.
   - Ensures common/beginner words appear first.
 
 - Store `normalized-value` (and normalized form values) for indexed lookup; keep canonical `value` for display.
 
 - Task documents use `data` payloads; `word-id` moves into `data` when needed.
 
-- Prefill add-word input only on exact normalized match; fuzzy matches are suggestions only.
+- Prefill add-word input only on exact normalized match; exact match is a selectable default, not an automatic replacement.
+
+- Autocomplete UI behavior:
+  - `word-autocomplete` custom element manages suggestions, keyboard navigation, and reset.
+  - Arrow keys move selection; Tab/Enter select; Escape clears.
+  - Translation hint appears as a ghost value when the translation input is empty.
+  - Selecting a suggestion sets the German input to the lemma and fills translation when present.
+  - UI uses the `/js/word-autocomplete.js` asset and standard HTMX swaps (no morph extension usage).
 
 - Dictionary sync strategy:
-  - Check `dictionary-state` document on app start.
+  - Check `dictionary-meta` document on app start.
   - If not loaded, trigger `PouchDB/replicate.from` with `live: false`.
   - Sync runs in background, non-blocking.
   - PouchDB handles interruptions, retries, and checkpoints automatically.
@@ -71,8 +79,8 @@ The app needs a predefined German dictionary to support autocomplete, canonical 
   - Migration marker prevents repeated runs.
 
 - Testing approach:
-  - Test documentation with manual QA scenarios.
-  - No automated tests for this initial implementation.
+  - Automated tests cover `dictionary/suggest` behaviors.
+  - Test documentation with manual QA scenarios for sync and UI behaviors.
 
 ## Alternatives considered
 - Single database with `type` filters (rejected: sync bloat and tighter coupling).
@@ -81,7 +89,7 @@ The app needs a predefined German dictionary to support autocomplete, canonical 
 - Per-install tokens (rejected: Unnecessary complexity for public content).
 - CouchDB backup for dictionary (rejected: Re-import from source files is simpler).
 - `find()` with secondary index on `normalized-value` for autocomplete (rejected: cold start problem — first query after replication triggers full index rebuild of ~150K docs; `allDocs` key-range uses the built-in primary B-tree with zero index overhead).
-- Foreign-key reference (`base-id`) in form docs requiring second lookup to resolve entries (rejected: N+1 performance cost during autocomplete; denormalized `entries[]` in surface-form docs eliminates secondary lookups).
+- Foreign-key reference (`base-id`) in form docs requiring per-suggestion lookup (rejected: N+1 performance cost during autocomplete; denormalized `entries[]` handles the primary lookup and a single batch fetch attaches translations).
 - Two separate databases for dictionary entries and surface-forms (rejected: adds operational complexity with no benefit; single `dictionary-db` with `_id` prefix conventions provides equivalent query isolation).
 
 ## Risks / Trade-offs

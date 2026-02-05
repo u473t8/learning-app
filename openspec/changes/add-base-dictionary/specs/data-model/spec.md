@@ -74,7 +74,7 @@ Example:
 ### Requirement: Surface-form documents are stored
 The system SHALL store surface-form documents that map normalized inflected forms to dictionary entries for fast prefix-based autocomplete.
 
-The `_id` follows the convention `sf:<normalized-form>`. Each document contains an `entries` array with denormalized entry data (`lemma-id`, `lemma`, `rank`), providing display-ready results without secondary lookups.
+The `_id` follows the convention `sf:<normalized-form>`. Each document contains an `entries` array with denormalized entry data (`lemma-id`, `lemma`, `rank`) for fast primary lookup; translation enrichment may use a batch lookup by `lemma-id`.
 
 #### Scenario: Surface-form document shape
 - **WHEN** a surface-form is stored
@@ -113,20 +113,24 @@ Example:
 }
 ```
 
-### Requirement: Dictionary state document is stored
-The system SHALL store a dictionary state document that tracks version and checksum metadata.
+### Requirement: Dictionary meta document is stored
+The system SHALL store a dictionary meta document that tracks import metadata.
 
-#### Scenario: Dictionary state document shape
-- **WHEN** the dictionary state is stored
-- **THEN** the document includes `type`, `version`, `checksum`, and `updated-at`
+#### Scenario: Dictionary meta document shape
+- **WHEN** the dictionary import completes
+- **THEN** the document includes `type`, `schema-version`, `generated-at`, `manifest-sha256`, and `files`
 
 Example:
 ```json
 {
-  "_id": "dictionary-state",
-  "type": "dictionary-state",
-  "version": "2026-01-26",
-  "checksum": "sha256:example",
-  "updated-at": "2026-01-26T12:00:00.000Z"
+  "_id": "dictionary-meta",
+  "type": "dictionary-meta",
+  "schema-version": 1,
+  "generated-at": "2026-02-01T18:28:42.528Z",
+  "manifest-sha256": "sha256:example",
+  "files": {
+    "dictionary-entries.jsonl": {"count": 123, "bytes": 456, "sha256": "sha256:entries"},
+    "surface-forms.jsonl": {"count": 789, "bytes": 1011, "sha256": "sha256:forms"}
+  }
 }
 ```

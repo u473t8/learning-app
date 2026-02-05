@@ -160,3 +160,16 @@ Example line (abbreviated):
 - **THEN** `manifest.edn` is written containing:
   - A generation timestamp
   - For each output file: document count, byte size, and SHA-256 checksum
+
+### Requirement: Import writes dictionary metadata
+The system SHALL store a dictionary meta document after a successful import.
+
+#### Scenario: Dictionary meta document
+- **WHEN** the import completes and data is uploaded
+- **THEN** the pipeline writes a document in `dictionary-db` with:
+  - `_id: "dictionary-meta"`
+  - `type: "dictionary-meta"`
+  - `schema-version` (integer)
+  - `generated-at` (from the manifest)
+  - `manifest-sha256` (SHA-256 of the manifest)
+  - `files` (the manifest file stats map)
