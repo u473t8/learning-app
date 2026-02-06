@@ -72,6 +72,17 @@ The app needs a predefined German dictionary to support autocomplete, canonical 
   - Sync runs in background, non-blocking.
   - PouchDB handles interruptions, retries, and checkpoints automatically.
   - No UI feedback, dev-only logging.
+  - Retry on page reload: SW `ping` handler re-triggers `ensure-loaded!` if dictionary is not yet ready (e.g. server was unavailable on first attempt).
+
+- Service worker update strategy:
+  - New SW probes active SW via `BroadcastChannel` to detect manual update support.
+  - If the active SW responds (new code with responder), the waiting SW defers to user button click ("Обновить").
+  - If no response within 500ms (old code without responder), the waiting SW calls `skipWaiting()` automatically.
+  - Both probe and responder use a single shared `BroadcastChannel` per SW; `postMessage` excludes the sender object, preventing self-messaging.
+
+- Dictionary import sets public read permissions:
+  - After creating/resetting `dictionary-db`, the import tool sets `_security` with empty `members` to allow unauthenticated read access.
+  - Prevents CouchDB's default behavior of restricting new databases to `_admin` members.
 
 - Database migration:
   - Migrate `local-db` to `user-db` + `device-db`.

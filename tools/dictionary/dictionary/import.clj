@@ -100,7 +100,11 @@
         existed? (db/exists? conn db-name)]
     (when (and reset? existed?)
       @(db/destroy db-ref))
-    (db/use conn db-name)))
+    (let [db (db/use conn db-name)]
+      ;; Allow public read access (empty members = no auth required for reads)
+      (db/secure db {:admins  {:names [] :roles []}
+                     :members {:names [] :roles []}})
+      db)))
 
 
 (defn- validate-input!

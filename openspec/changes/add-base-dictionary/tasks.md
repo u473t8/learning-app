@@ -96,6 +96,14 @@
   - Sync runs in background, doesn't block app startup.
   - Errors are logged but don't affect activation.
 - [x] Keep `loaded?` function for UI status checks.
+- [x] Retry dictionary sync on page reload if not loaded (e.g. server was unavailable).
+
+#### 6.z SW Update: Old Client Compatibility
+
+- [x] Auto-activate new SW when old client can't trigger manual update.
+  - New SW probes active SW via `BroadcastChannel`; no response within 500ms triggers `skipWaiting()`.
+  - Single shared channel per SW prevents self-messaging.
+- [x] Fix dictionary import to set public read permissions on `dictionary-db` after creation.
 
 ## 7. Testing
 - [x] 7.0 Add automated tests for `dictionary/suggest` (empty input, dedupe, ranking, prefill) in `test/client/dictionary_test.cljs`.

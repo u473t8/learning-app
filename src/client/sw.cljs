@@ -16,6 +16,9 @@
    [utils :as utils]))
 
 
+(def ^:const update-channel-name "sw-update-channel")
+
+
 (def base-precache-urls
   ["/"
    "/manifest.json"
@@ -40,6 +43,41 @@
 ;;
 
 
+(def ^:private update-channel
+  (js/BroadcastChannel. update-channel-name))
+
+;; Responder: replies to probes from other SWs.
+;; Uses the shared channel, so probes from this SW are excluded by BroadcastChannel API.
+(.addEventListener
+ update-channel
+ "message"
+ (fn [event]
+   (when (= "probe-manual-update" (.-data event))
+     (log/debug :sw/responding-to-update-probe {})
+     (.postMessage update-channel "supports-manual-update"))))
+
+
+(defn- supports-manual-update?
+  "Probe active SW via BroadcastChannel. Returns promise<boolean>."
+  []
+  (p/create
+   (fn [resolve _]
+     (let [timeout-id (atom nil)
+           listener (fn [event]
+                      (when (= "supports-manual-update" (.-data event))
+                        (js/clearTimeout @timeout-id)
+                        (resolve true)))]
+       (doto update-channel
+         (.addEventListener "message" listener)
+         (.postMessage "probe-manual-update"))
+       (reset! timeout-id
+               (js/setTimeout
+                (fn []
+                  (.removeEventListener update-channel "message" listener)
+                  (resolve false))
+                500))))))
+
+
 (defn- set-update-pending!
   [pending?]
   (p/let [device-db (dbs/device-db)
@@ -58,14 +96,18 @@
  "install"
  (fn [^InstallEvent event]
    (log/debug :event/install event)
-   ;; Don't call skipWaiting - let user control when to update
    (..
     event
     (waitUntil
      (p/do
        (set-update-pending! true)
        (p/-> (js/caches.open "resources")
-             (.addAll base-precache-urls)))))))
+             (.addAll base-precache-urls))
+       ;; Check if active SW supports manual update
+       (p/let [supports-manual? (supports-manual-update?)]
+         (when-not supports-manual?
+           (log/info :sw/auto-skip-waiting {:reason "active-sw-unsupported"})
+           (js/self.skipWaiting))))))))
 
 
 (js/self.addEventListener

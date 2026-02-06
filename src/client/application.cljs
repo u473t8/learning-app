@@ -4,6 +4,7 @@
    [db-migrations :as db-migrations]
    [dbs :as dbs]
    [dictionary :as dictionary]
+   [dictionary-sync :as dictionary-sync]
    [domain.vocabulary :as domain.vocabulary]
    [examples :as examples]
    [hiccup :as hiccup]
@@ -108,6 +109,15 @@
                       :user-db       (dbs/user-db)
                       :device-db     (dbs/device-db)
                       :dictionary-db (dbs/dictionary-db))))})
+
+
+(def dictionary-sync-interceptor
+  "Retries dictionary sync if it failed (e.g. server was unavailable)."
+  {:name  ::dictionary-sync-interceptor
+   :enter (fn [ctx]
+            (when-not (dictionary-sync/loaded?)
+              (dictionary-sync/ensure-loaded!))
+            ctx)})
 
 
 (def sw-update-interceptor
@@ -290,6 +300,7 @@
 
     {:data {:interceptors [migration-start-interceptor
                            db-interceptor
+                           dictionary-sync-interceptor
                            sw-update-interceptor
                            (parameters/parameters-interceptor)
                            (keyword-parameters/keyword-parameters-interceptor)
