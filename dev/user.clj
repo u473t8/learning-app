@@ -17,11 +17,16 @@
   (requiring-resolve 'core/-main))
 
 
+(def stop-server
+  (requiring-resolve 'core/stop-server!))
+
+
 (def reload-deps
   (requiring-resolve 'clojure.repl.deps/sync-deps))
 
 
 (comment
   (start-server)
+  (stop-server)
   (reload-deps)
   )
