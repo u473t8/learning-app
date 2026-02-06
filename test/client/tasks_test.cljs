@@ -19,9 +19,10 @@
 
 
 (use-fixtures
-  :each
-  (db-fixtures/db-fixture test-db-name)
-  {:before (fn [] (reset! @#'sut/state {:enabled? true})), :after sut/stop!})
+ :each
+ (db-fixtures/db-fixture test-db-name)
+ {:before (fn [] (reset! @#'sut/state {:enabled? true}))
+  :after  sut/stop!})
 
 
 (defn- with-mocked-env
@@ -31,21 +32,21 @@
         now-iso (or (:now-iso opts) (utils/ms->iso now-ms))
         online? (if (contains? opts :online?) (:online? opts) true)]
     (db-fixtures/with-test-db
-     test-db-name
-     (fn [db]
-       (let [dbs {:device-db db :user-db db}]
-         (p/with-redefs [db/use        (constantly db)
-                         utils/now-ms  (constantly now-ms)
-                         utils/now-iso (constantly now-iso)
-                         sut/online?   (constantly online?)]
-           (p/let [_ (p/catch
-                       (db/create-index
-                        db
-                        [:type :run-at :created-at]
-                        {:name "by-type-run-at-created-at"
-                         :ddoc "by-type-run-at-created-at"})
-                       (fn [_] nil))]
-             (f dbs))))))))
+      test-db-name
+      (fn [db]
+        (let [dbs {:device-db db :user-db db}]
+          (p/with-redefs [db/use        (constantly db)
+                          utils/now-ms  (constantly now-ms)
+                          utils/now-iso (constantly now-iso)
+                          sut/online?   (constantly online?)]
+            (p/let [_ (p/catch
+                        (db/create-index
+                         db
+                         [:type :run-at :created-at]
+                         {:name "by-type-run-at-created-at"
+                          :ddoc "by-type-run-at-created-at"})
+                        (fn [_] nil))]
+              (f dbs))))))))
 
 
 (defn- get-docs
@@ -283,3 +284,23 @@
           (p/let [tasks (get-tasks-by-type device-db "succeed-task")]
             (is (= 1 (count tasks)))
             (is (= "future-word" (get-in (first tasks) [:data :word-id])))))))))
+
+
+;; =============================================================================
+;; Integration Tests: Eager Dispatch
+;; =============================================================================
+
+
+(deftest create-task-triggers-immediate-execution
+  (async-testing "`create-task!` triggers flush which processes the task"
+    (with-mocked-env {}
+      (fn [{:keys [device-db] :as dbs}]
+        ;; Put dbs in state so flush! can find them
+        (reset! @#'sut/state {:enabled? true :dbs dbs})
+        (p/do
+          ;; create-task! returns immediately after insert (fire-and-forget flush)
+          (sut/create-task! "succeed-task" {:word-id "eager-word"})
+          ;; Give the fire-and-forget flush time to complete
+          (p/delay 100)
+          (p/let [tasks (get-tasks-by-type device-db "succeed-task")]
+            (is (empty? tasks) "Task should be processed immediately after creation")))))))

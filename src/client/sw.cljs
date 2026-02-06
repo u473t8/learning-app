@@ -46,6 +46,7 @@
 (def ^:private update-channel
   (js/BroadcastChannel. update-channel-name))
 
+
 ;; Responder: replies to probes from other SWs.
 ;; Uses the shared channel, so probes from this SW are excluded by BroadcastChannel API.
 (.addEventListener
@@ -63,19 +64,19 @@
   (p/create
    (fn [resolve _]
      (let [timeout-id (atom nil)
-           listener (fn [event]
-                      (when (= "supports-manual-update" (.-data event))
-                        (js/clearTimeout @timeout-id)
-                        (resolve true)))]
+           listener   (fn [event]
+                        (when (= "supports-manual-update" (.-data event))
+                          (js/clearTimeout @timeout-id)
+                          (resolve true)))]
        (doto update-channel
          (.addEventListener "message" listener)
          (.postMessage "probe-manual-update"))
        (reset! timeout-id
-               (js/setTimeout
-                (fn []
-                  (.removeEventListener update-channel "message" listener)
-                  (resolve false))
-                500))))))
+         (js/setTimeout
+          (fn []
+            (.removeEventListener update-channel "message" listener)
+            (resolve false))
+          500))))))
 
 
 (defn- set-update-pending!
@@ -123,15 +124,16 @@
        (set-update-pending! false)
        (js/self.clients.claim)
        (db-migrations/ensure-migrated!)
-       (tasks/start!))))))
+       (tasks/start! {:device-db (dbs/device-db)
+                      :user-db   (dbs/user-db)}))))))
 
 
 (js/self.addEventListener
  "message"
  (fn [event]
    (case (.. event -data -type)
-     "ping"         (some-> (.-source event)
-                            (.postMessage #js {:type "pong"}))
+     "ping" (some-> (.-source event)
+                    (.postMessage #js {:type "pong"}))
      "SKIP_WAITING" (js/self.skipWaiting)
      nil)))
 
@@ -215,5 +217,3 @@
          (api-request? request)    (js/fetch request)
          (static-request? request) (network-first-fetch request)
          :else                     (local-handler request)))))))
-
-

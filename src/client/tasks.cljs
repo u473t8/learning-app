@@ -14,9 +14,8 @@
 
 
 (def ^:private config
-  {:max-backoff-ms   60000
-   :max-concurrent   3
-   :poll-interval-ms (if js/goog.DEBUG 5000 30000)})
+  {:max-backoff-ms 60000
+   :max-concurrent 3})
 
 
 ;; =============================================================================
@@ -203,34 +202,51 @@
 (def ^:private state (atom {}))
 
 
+(declare flush!)
+
+
+(defn- schedule-retry!
+  "Schedule a delayed flush after a failed task."
+  [delay-ms]
+  (js/setTimeout flush! delay-ms))
+
+
+(defn- nearest-retry-delay
+  "Returns ms until the earliest run-at among remaining tasks, or nil."
+  [db]
+  (p/let [{:keys [docs]}
+          (db/find db
+                   {:selector  {:type       "task"
+                                :run-at     {:$exists true}
+                                :created-at {:$exists true}
+                                :$or        [{:status {:$exists false}}
+                                             {:status {:$ne "failed"}}]}
+                    :sort      [{:type :asc}
+                                {:run-at :asc}
+                                {:created-at :asc}]
+                    :limit     1
+                    :use-index "by-type-run-at-created-at"})]
+    (when-let [task (first docs)]
+      (max 0 (- (utils/iso->ms (:run-at task)) (utils/now-ms))))))
+
+
 (defn- run-cycle!
   [dbs]
   (let [device-db (:device-db dbs)]
-    (p/loop []
-      (when (and (online?) (:enabled? @state))
-        (p/let [tasks (fetch-due-tasks device-db (utils/now-iso))]
-          (log/debug :run-cycle/tasks tasks)
-          (when (seq tasks)
-            (p/do
-              (run-workers! dbs tasks)
-              (p/recur))))))))
-
-
-(defn- start-polling!
-  [dbs]
-  (let [poll (fn poll []
-               (log/debug :poll/state @state)
-               (when (:enabled? @state)
-                 (swap! state assoc :polling? true)
-                 (if (online?)
-                   (-> (run-cycle! dbs)
-                       (p/catch #(log/error :tasks/poll-error {:error (str %)}))
-                       (p/finally #(js/setTimeout poll (:poll-interval-ms config))))
-                   ;; Offline: don't schedule next poll, let online listener resume
-                   (do
-                     (swap! state assoc :polling? false)
-                     (log/debug :tasks/paused-offline {})))))]
-    (poll)))
+    (p/do
+      (p/loop []
+        (when (and (online?) (:enabled? @state))
+          (p/let [tasks (fetch-due-tasks device-db (utils/now-iso))]
+            (log/debug :run-cycle/tasks tasks)
+            (when (seq tasks)
+              (p/do
+                (run-workers! dbs tasks)
+                (p/recur))))))
+      ;; After processing, check if any tasks remain for retry
+      (p/let [delay (nearest-retry-delay device-db)]
+        (when delay
+          (log/debug :tasks/scheduling-retry {:delay-ms delay})
+          (schedule-retry! delay))))))
 
 
 ;; =============================================================================
@@ -238,19 +254,29 @@
 ;; =============================================================================
 
 
-(defn start!
-  "Start the task runner. Returns a stop function."
+(defn flush!
+  "Trigger a run cycle if enabled and online. Fire-and-forget: the promise
+   chain is a self-contained side effect (with its own error handling),
+   so callers never block on task execution."
   []
-  (let [device-db (dbs/device-db)
-        dbs       {:device-db device-db :user-db (dbs/user-db)}
-        start-polling! #(start-polling! dbs)]
+  (when-let [{:keys [dbs enabled? running?]} @state]
+    (when (and (some? dbs) enabled? (online?) (not running?))
+      (swap! state assoc :running? true)
+      (-> (run-cycle! dbs)
+          (p/catch #(log/error :tasks/flush-error {:error (str %)}))
+          (p/finally #(swap! state assoc :running? false)))))
+  nil)
 
-    (reset! state {:enabled? true :start-polling! start-polling!})
 
-    (log/info :tasks/starting config)
-    (p/do
-      (ensure-task-index! device-db)
-      (start-polling!))))
+(defn start!
+  "Start the task runner."
+  [dbs]
+  (reset! state {:enabled? true :dbs dbs})
+
+  (log/info :tasks/starting config)
+  (p/do
+    (ensure-task-index! (:device-db dbs))
+    (flush!)))
 
 
 (defn stop!
@@ -261,14 +287,14 @@
 
 (defn resume!
   []
-  (when-let [{:keys [start-polling! enabled? polling?]} @state]
-    (when (and (online?) enabled? (not polling?))
-      (log/debug :tasks/resuming {})
-      (start-polling!))))
+  (log/debug :tasks/resuming {})
+  (flush!))
 
 
 (defn create-task!
   [task-type data]
   (let [db      (dbs/device-db)
         now-iso (utils/now-iso)]
-    (db/insert db (create-task task-type data now-iso))))
+    (p/do
+      (db/insert db (create-task task-type data now-iso))
+      (flush!))))
