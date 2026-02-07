@@ -41,19 +41,17 @@
 (defn- start-sync!
   []
   (let [dict-db (dbs/dictionary-db)]
-    (p/let [already-loaded (dictionary-loaded? dict-db)]
-      (if already-loaded
-        (do
-          (log/info :dictionary-sync/already-loaded {})
-          :already-loaded)
-        (p/do
-          (log/info :dictionary-sync/starting {})
-          (run-replication! dict-db)
-          (p/let [loaded (dictionary-loaded? dict-db)]
-            (when-not loaded
-              (throw (ex-info "dictionary-state doc not found after replication" {}))))
-          (log/info :dictionary-sync/complete {})
-          :complete)))))
+    (p/let [loaded-before (dictionary-loaded? dict-db)]
+      (p/do
+        ;; Always run a one-shot pull replication on startup. PouchDB checkpoints
+        ;; keep this incremental and cheap when there are no changes.
+        (log/info :dictionary-sync/starting {:loaded-before loaded-before})
+        (run-replication! dict-db)
+        (p/let [loaded-after (dictionary-loaded? dict-db)]
+          (when-not loaded-after
+            (throw (ex-info "dictionary-meta doc not found after replication" {}))))
+        (log/info :dictionary-sync/complete {:loaded-before loaded-before})
+        :complete))))
 
 
 (defn ensure-loaded!
