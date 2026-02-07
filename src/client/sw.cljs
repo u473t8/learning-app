@@ -13,31 +13,36 @@
    [logging]
    [promesa.core :as p]
    [tasks :as tasks]
-   [utils :as utils]))
+   [utils :as utils])
+  (:require-macros [sw-version]))
 
-(def version "6")
+
+(def precache
+  (sw-version/precache-manifest
+    ["/"
+     "/manifest.json"
+     "/css/styles.css"
+     "/js/word-autocomplete.js"
+     "/js/sw-bridge.js"
+     "/js/sw-loader.js"
+     "/fonts/Nunito/nunito-v26-cyrillic_latin-regular.woff2"
+     "/fonts/Nunito/nunito-v26-cyrillic_latin-500.woff2"
+     "/fonts/Nunito/nunito-v26-cyrillic_latin-600.woff2"
+     "/fonts/Nunito/nunito-v26-cyrillic_latin-600italic.woff2"
+     "/fonts/Nunito/nunito-v26-cyrillic_latin-700.woff2"
+     "/fonts/Nunito/nunito-v26-cyrillic_latin-800.woff2"
+     "/js/htmx/htmx.min.js"
+     "/favicon.ico"
+     "/icons.svg"
+     "/icons/ue-192.png"
+     "/icons/ue-512.png"]))
+
+(def version (:hash precache))
+
+(def base-precache-urls (:list precache))
+
 
 (def ^:const update-channel-name "sw-update-channel")
-
-
-(def base-precache-urls
-  ["/"
-   "/manifest.json"
-   "/css/styles.css"
-   "/js/word-autocomplete.js"
-   "/js/sw-bridge.js"
-   "/js/sw-loader.js"
-   "/fonts/Nunito/nunito-v26-cyrillic_latin-regular.woff2"
-   "/fonts/Nunito/nunito-v26-cyrillic_latin-500.woff2"
-   "/fonts/Nunito/nunito-v26-cyrillic_latin-600.woff2"
-   "/fonts/Nunito/nunito-v26-cyrillic_latin-600italic.woff2"
-   "/fonts/Nunito/nunito-v26-cyrillic_latin-700.woff2"
-   "/fonts/Nunito/nunito-v26-cyrillic_latin-800.woff2"
-   "/js/htmx/htmx.min.js"
-   "/favicon.ico"
-   "/icons.svg"
-   "/icons/ue-192.png"
-   "/icons/ue-512.png"])
 
 
 ;;
@@ -108,8 +113,9 @@
      (p/do
        (set-update-pending! true)
        (p/let [cache (js/caches.open "resources")]
-         (.addAll cache (to-array (map #(js/Request. % #js {:cache "reload"})
-                                       base-precache-urls))))
+         (.addAll cache
+                  (to-array (map #(js/Request. % #js {:cache "reload"})
+                                 base-precache-urls))))
        ;; Check if active SW supports manual update
        (p/let [supports-manual? (supports-manual-update?)]
          (when-not supports-manual?
