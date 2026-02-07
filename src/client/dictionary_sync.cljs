@@ -73,4 +73,4 @@
                       (swap! state assoc :status :failed :promise nil)
                       false)))]
         (swap! state assoc :status :syncing :promise p)
-        p))))
+        nil))))

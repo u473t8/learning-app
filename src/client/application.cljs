@@ -1,7 +1,6 @@
 (ns application
   (:require
    [db :as db]
-   [db-migrations :as db-migrations]
    [dbs :as dbs]
    [dictionary :as dictionary]
    [dictionary-sync :as dictionary-sync]
@@ -43,6 +42,7 @@
      [:link {:rel "stylesheet" :href "/css/styles.css"}]
      [:script {:src "/js/htmx/htmx.min.js" :defer true}]
      [:script {:src "/js/word-autocomplete.js" :defer true}]
+     [:script {:src "/js/sw-bridge.js" :defer true}]
      head]
     [:body
      [:a.app-logo
@@ -57,29 +57,7 @@
       [:div.loader__list {:style {:--items-count 1}}
        [:div.loader__text "Загружаем..."]]]
      [:div#app body]
-     [:script "navigator.serviceWorker&&(navigator.serviceWorker.addEventListener('controllerchange',function(){location.reload()}),navigator.serviceWorker.getRegistration().then(function(r){if(r)r.addEventListener('updatefound',function(){var sw=r.installing;if(sw)sw.addEventListener('statechange',function(){if(sw.state==='installed'&&navigator.serviceWorker.controller)document.body.dispatchEvent(new CustomEvent('sw-update-available'))})})}))"]]]))
-
-
-(defn- request-path
-  [request]
-  (let [uri (:uri request)
-        qs  (:query-string request)]
-    (if (seq qs)
-      (str uri "?" qs)
-      uri)))
-
-
-(defn- migration-shell
-  [path {:keys [status]}]
-  [:div.migration-shell
-   {:hx-get     path
-    :hx-trigger "load delay:200ms, every 2s"
-    :hx-sync    "closest .migration-shell:abort"
-    :hx-target  "#app"
-    :hx-swap    "innerHTML"}
-   [:p "Updating data..."]
-   (when (= status :failed)
-     [:p "Retrying migration soon."])])
+     [:div#sw-update-veil.sw-update-veil "Обновляем\u2026"]]]))
 
 
 ;;
@@ -102,13 +80,11 @@
   "Injects database instance into request."
   {:name  ::db-interceptor
    :enter (fn [ctx]
-            (if (not= :done (:migration/status ctx))
-              ctx
-              (update ctx
-                      :request       assoc
-                      :user-db       (dbs/user-db)
-                      :device-db     (dbs/device-db)
-                      :dictionary-db (dbs/dictionary-db))))})
+            (update ctx
+                    :request       assoc
+                    :user-db       (dbs/user-db)
+                    :device-db     (dbs/device-db)
+                    :dictionary-db (dbs/dictionary-db)))})
 
 
 (def dictionary-sync-interceptor
@@ -120,37 +96,12 @@
             ctx)})
 
 
-(def sw-update-interceptor
+(def app-update-interceptor
   "Injects SW update pending flag into request."
   {:name  ::sw-update-interceptor
    :enter (fn [ctx]
-            (if (not= :done (:migration/status ctx))
-              ctx
-              (p/let [doc (db/get (dbs/device-db) "sw-update-pending")]
-                (assoc-in ctx [:request :sw/update-pending?] (:pending doc)))))})
-
-
-(def migration-start-interceptor
-  {:name  ::migration-start-interceptor
-   :enter (fn [ctx]
-            (db-migrations/ensure-migrated!)
-            (assoc ctx :migration/status (db-migrations/migration-status)))})
-
-
-(def migration-shell-interceptor
-  {:name  ::migration-shell-interceptor
-   :enter (fn [ctx]
-            (let [status (or (:migration/status ctx)
-                             (db-migrations/migration-status))]
-              (if (= :done status)
-                ctx
-                (let [path (request-path (:request ctx))]
-                  (-> ctx
-                      ;; Short-circuit remaining interceptors
-                      (update :queue empty)
-                      (assoc :response
-                             {:status    200
-                              :html/body (migration-shell path {:status status})}))))))})
+            (p/let [pending-doc (db/get (dbs/device-db) "sw-update-pending")]
+              (assoc-in ctx [:request :sw/update-pending?] (:pending pending-doc))))})
 
 
 (def ui-routes
@@ -158,7 +109,7 @@
     ["/home"
      {:get (fn [{:keys [user-db sw/update-pending?]}]
              (p/let [word-count (vocabulary/count user-db)]
-               {:html/body (views.home/home {:word-count word-count
+               {:html/body (views.home/home {:word-count      word-count
                                              :update-pending? update-pending?})}))}]
 
     ["/dictionary-entries"
@@ -298,15 +249,13 @@
    (http/router
     ui-routes
 
-    {:data {:interceptors [migration-start-interceptor
-                           db-interceptor
+    {:data {:interceptors [db-interceptor
                            dictionary-sync-interceptor
-                           sw-update-interceptor
+                           app-update-interceptor
                            (parameters/parameters-interceptor)
                            (keyword-parameters/keyword-parameters-interceptor)
                            (hiccup/interceptor {:layout-fn nil})
-                           page-layout-interceptor
-                           migration-shell-interceptor]}})
+                           page-layout-interceptor]}})
 
    (constantly {:status 404 :body ""})
 

@@ -16,7 +16,7 @@
         [:div.sw-update-toast
          [:span "Доступно обновление"]
          [:button.sw-update-toast__button
-          {:onclick "navigator.serviceWorker.getRegistration().then(function(r){r.waiting&&r.waiting.postMessage({type:'SKIP_WAITING'})})"}
+          {:onclick "applySwUpdate()"}
           "Обновить"]])]
 
      [:header.home__hero

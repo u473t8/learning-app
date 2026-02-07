@@ -144,7 +144,7 @@
         (fn [err]
           (log/error :db-migrations/error {:error (str err)})
           (swap! migration-state assoc :status :failed :promise nil)
-          false))))
+          (throw err)))))
 
 
 (defn ensure-migrated! []

@@ -15,6 +15,7 @@
    [tasks :as tasks]
    [utils :as utils]))
 
+(def version "6")
 
 (def ^:const update-channel-name "sw-update-channel")
 
@@ -24,6 +25,7 @@
    "/manifest.json"
    "/css/styles.css"
    "/js/word-autocomplete.js"
+   "/js/sw-bridge.js"
    "/js/sw-loader.js"
    "/fonts/Nunito/nunito-v26-cyrillic_latin-regular.woff2"
    "/fonts/Nunito/nunito-v26-cyrillic_latin-500.woff2"
@@ -47,15 +49,13 @@
   (js/BroadcastChannel. update-channel-name))
 
 
-;; Responder: replies to probes from other SWs.
-;; Uses the shared channel, so probes from this SW are excluded by BroadcastChannel API.
-(.addEventListener
- update-channel
- "message"
- (fn [event]
-   (when (= "probe-manual-update" (.-data event))
-     (log/debug :sw/responding-to-update-probe {})
-     (.postMessage update-channel "supports-manual-update"))))
+(defn- set-update-pending!
+  [pending?]
+  (p/let [device-db (dbs/device-db)
+          existing  (db/get device-db "sw-update-pending")
+          doc       (merge {:_id "sw-update-pending" :pending pending?}
+                           (when existing {:_rev (:_rev existing)}))]
+    (db/insert device-db doc)))
 
 
 (defn- supports-manual-update?
@@ -79,13 +79,18 @@
           500))))))
 
 
-(defn- set-update-pending!
-  [pending?]
-  (p/let [device-db (dbs/device-db)
-          existing  (db/get device-db "sw-update-pending")
-          doc       (merge {:_id "sw-update-pending" :pending pending?}
-                           (when existing {:_rev (:_rev existing)}))]
-    (db/insert device-db doc)))
+;; Responder: replies to probes from other SWs.
+;; Uses the shared channel, so probes from this SW are excluded by BroadcastChannel API.
+(.addEventListener
+ update-channel
+ "message"
+ (fn [event]
+   (case (.-data event)
+     "probe-manual-update"
+     (do (log/debug :sw/responding-to-update-probe {})
+         (.postMessage update-channel "supports-manual-update"))
+
+     nil)))
 
 
 ;;
@@ -102,8 +107,9 @@
     (waitUntil
      (p/do
        (set-update-pending! true)
-       (p/-> (js/caches.open "resources")
-             (.addAll base-precache-urls))
+       (p/let [cache (js/caches.open "resources")]
+         (.addAll cache (to-array (map #(js/Request. % #js {:cache "reload"})
+                                       base-precache-urls))))
        ;; Check if active SW supports manual update
        (p/let [supports-manual? (supports-manual-update?)]
          (when-not supports-manual?
@@ -115,17 +121,19 @@
  "activate"
  (fn [event]
    (log/debug :event/activate event)
-   ;; Fire-and-forget: start dictionary sync in background, don't block activation
-   (dictionary-sync/ensure-loaded!)
    (..
     event
     (waitUntil
-     (p/do
-       (set-update-pending! false)
-       (js/self.clients.claim)
-       (db-migrations/ensure-migrated!)
-       (tasks/start! {:device-db (dbs/device-db)
-                      :user-db   (dbs/user-db)}))))))
+     (-> (p/do
+           (db-migrations/ensure-migrated!)
+           (tasks/start!)
+           (dictionary-sync/ensure-loaded!)
+           (js/self.clients.claim)
+           (set-update-pending! false))
+         (p/catch
+           (fn [err]
+             (log/error :sw/activate-failed {:error (str err)})
+             (throw err))))))))
 
 
 (js/self.addEventListener

@@ -270,13 +270,15 @@
 
 (defn start!
   "Start the task runner."
-  [dbs]
-  (reset! state {:enabled? true :dbs dbs})
+  []
+  (let [dbs {:device-db (dbs/device-db)
+             :user-db   (dbs/user-db)}]
+    (reset! state {:enabled? true :dbs dbs})
 
-  (log/info :tasks/starting config)
-  (p/do
-    (ensure-task-index! (:device-db dbs))
-    (flush!)))
+    (log/info :tasks/starting config)
+    (p/do
+      (ensure-task-index! (:device-db dbs))
+      (flush!))))
 
 
 (defn stop!
