@@ -9,6 +9,21 @@ on:
         required: false
         type: boolean
         default: false
+      deploy_infra:
+        description: Deploy infrastructure only
+        required: false
+        type: boolean
+        default: false
+      deploy_app:
+        description: Deploy application only
+        required: false
+        type: boolean
+        default: false
+      deploy_dictionary:
+        description: Deploy dictionary only
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-master-${{ github.ref }}
@@ -23,6 +38,7 @@ jobs:
       app_changed: ${{ steps.detect.outputs.app_changed }}
       dictionary_changed: ${{ steps.detect.outputs.dictionary_changed }}
       any_deploy: ${{ steps.detect.outputs.any_deploy }}
+      selective_dispatch: ${{ steps.detect.outputs.selective_dispatch }}
     steps:
       - uses: actions/checkout@v6.0.2
         with:
@@ -38,19 +54,36 @@ jobs:
             echo "app_changed=true" >> "$GITHUB_OUTPUT"
             echo "dictionary_changed=true" >> "$GITHUB_OUTPUT"
             echo "any_deploy=true" >> "$GITHUB_OUTPUT"
+            echo "selective_dispatch=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            before="$(git rev-parse "${GITHUB_SHA}^" 2>/dev/null || true)"
-          else
-            before="${{ github.event.before }}"
+            infra_manual="${DISPATCH_DEPLOY_INFRA}"
+            app_manual="${DISPATCH_DEPLOY_APP}"
+            dictionary_manual="${DISPATCH_DEPLOY_DICTIONARY}"
+
+            if [[ "${infra_manual}" == "true" || "${app_manual}" == "true" || "${dictionary_manual}" == "true" ]]; then
+              echo "infra_changed=${infra_manual}" >> "$GITHUB_OUTPUT"
+              echo "app_changed=${app_manual}" >> "$GITHUB_OUTPUT"
+              echo "dictionary_changed=${dictionary_manual}" >> "$GITHUB_OUTPUT"
+              echo "any_deploy=true" >> "$GITHUB_OUTPUT"
+              echo "selective_dispatch=true" >> "$GITHUB_OUTPUT"
+
+              exit 0
+            fi
+
+            echo "ERROR: workflow_dispatch requires at least one target (deploy_infra/deploy_app/deploy_dictionary) or force_deploy=true" >&2
+            exit 1
           fi
+
+          before="${{ github.event.before }}"
           if [[ -z "${before}" || "${before}" == "0000000000000000000000000000000000000000" ]]; then
             echo "infra_changed=true" >> "$GITHUB_OUTPUT"
             echo "app_changed=true" >> "$GITHUB_OUTPUT"
             echo "dictionary_changed=true" >> "$GITHUB_OUTPUT"
             echo "any_deploy=true" >> "$GITHUB_OUTPUT"
+            echo "selective_dispatch=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -59,6 +92,7 @@ jobs:
             echo "app_changed=true" >> "$GITHUB_OUTPUT"
             echo "dictionary_changed=true" >> "$GITHUB_OUTPUT"
             echo "any_deploy=true" >> "$GITHUB_OUTPUT"
+            echo "selective_dispatch=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -67,7 +101,7 @@ jobs:
           import os
           import subprocess
 
-          before = os.environ["GITHUB_EVENT_BEFORE"]
+          before = os.environ["RESOLVED_BEFORE"]
           sha = os.environ["GITHUB_SHA"]
           output_path = os.environ["GITHUB_OUTPUT"]
 
@@ -110,15 +144,39 @@ jobs:
 
           any_deploy = infra or app or dictionary
 
+          print(f"before={before}")
+          print(f"sha={sha}")
+          print("changed files:")
+          for path in changed:
+              print(f"- {path}")
+          print(
+              f"resolved flags infra_changed={'true' if infra else 'false'} "
+              f"app_changed={'true' if app else 'false'} "
+              f"dictionary_changed={'true' if dictionary else 'false'} "
+              f"any_deploy={'true' if any_deploy else 'false'}"
+          )
+
           with open(output_path, "a", encoding="utf-8") as fh:
               fh.write(f"infra_changed={'true' if infra else 'false'}\n")
               fh.write(f"app_changed={'true' if app else 'false'}\n")
               fh.write(f"dictionary_changed={'true' if dictionary else 'false'}\n")
               fh.write(f"any_deploy={'true' if any_deploy else 'false'}\n")
+              fh.write("selective_dispatch=false\n")
           PY
         env:
-          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+          RESOLVED_BEFORE: ${{ github.event.before }}
           FORCE_DEPLOY: ${{ github.event.inputs.force_deploy || 'false' }}
+          DISPATCH_DEPLOY_INFRA: ${{ github.event.inputs.deploy_infra || 'false' }}
+          DISPATCH_DEPLOY_APP: ${{ github.event.inputs.deploy_app || 'false' }}
+          DISPATCH_DEPLOY_DICTIONARY: ${{ github.event.inputs.deploy_dictionary || 'false' }}
+
+      - name: Log deploy scope
+        run: |
+          echo "infra_changed=${{ steps.detect.outputs.infra_changed }}"
+          echo "app_changed=${{ steps.detect.outputs.app_changed }}"
+          echo "dictionary_changed=${{ steps.detect.outputs.dictionary_changed }}"
+          echo "any_deploy=${{ steps.detect.outputs.any_deploy }}"
+          echo "selective_dispatch=${{ steps.detect.outputs.selective_dispatch }}"
 
   integration:
     if: ${{ needs.detect-changes.outputs.any_deploy == 'true' }}
@@ -178,13 +236,13 @@ jobs:
             exit 1
 
   deploy-app:
-    if: ${{ needs.detect-changes.outputs.any_deploy == 'true' && (needs.detect-changes.outputs.app_changed == 'true' || needs.detect-changes.outputs.infra_changed == 'true') }}
+    if: ${{ needs.detect-changes.outputs.any_deploy == 'true' && (needs.detect-changes.outputs.app_changed == 'true' || (needs.detect-changes.outputs.infra_changed == 'true' && needs.detect-changes.outputs.selective_dispatch != 'true')) }}
     needs: [detect-changes, integration, infra-ready]
     uses: ./.github/workflows/deploy-app.yml
     secrets: inherit
 
   deploy-dictionary:
-    if: ${{ needs.detect-changes.outputs.any_deploy == 'true' && (needs.detect-changes.outputs.dictionary_changed == 'true' || needs.detect-changes.outputs.infra_changed == 'true') }}
+    if: ${{ needs.detect-changes.outputs.any_deploy == 'true' && (needs.detect-changes.outputs.dictionary_changed == 'true' || (needs.detect-changes.outputs.infra_changed == 'true' && needs.detect-changes.outputs.selective_dispatch != 'true')) }}
     needs: [detect-changes, integration, infra-ready]
     uses: ./.github/workflows/deploy-dictionary.yml
     secrets: inherit
