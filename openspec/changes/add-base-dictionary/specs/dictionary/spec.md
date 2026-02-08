@@ -1,5 +1,5 @@
 ## Purpose
-The dictionary spec defines how to base dictionary is loaded and used for autocomplete and canonical spelling.
+The dictionary spec defines how the base dictionary is loaded and used for autocomplete and canonical spelling.
 
 ## ADDED Requirements
 
@@ -12,20 +12,26 @@ The system SHALL load dictionary from a public read-only CouchDB database via Po
 - **AND** replication runs in background without blocking the app
 - **AND** PouchDB handles interruptions, retries, and checkpoints automatically
 
-#### Scenario: No sync on subsequent starts
-- **WHEN** app starts and `dictionary-meta` document exists
-- **THEN** no sync is triggered (dictionary already loaded)
+#### Scenario: Startup incremental sync check
+- **WHEN** app starts and `dictionary-meta` document already exists
+- **THEN** the system still triggers a one-way pull replication to check for updates
+- **AND** PouchDB checkpoints make the run incremental and quick when there are no changes
 
-### Requirement: Dictionary sync runs as a task
-The system SHALL schedule dictionary synchronization via the task runner to keep UI responsive.
+### Requirement: Dictionary sync runs via loader entry points
+The system SHALL trigger dictionary synchronization through `dictionary-sync/ensure-loaded!` entry points (not via a queued task).
 
-#### Scenario: Task-based sync scheduling
-- **WHEN** app starts on a device without a local dictionary
-- **THEN** the system enqueues a `dictionary-sync` task (idempotent)
-- **AND** the task starts replication in the background without blocking UI
+#### Scenario: Service worker startup trigger
+- **WHEN** service worker activation runs startup hooks
+- **THEN** the system invokes `dictionary-sync/ensure-loaded!`
+- **AND** sync starts in the background without blocking app startup
+
+#### Scenario: Request-time retry trigger
+- **WHEN** an app request is handled while dictionary sync state is not ready
+- **THEN** the dictionary-sync interceptor invokes `dictionary-sync/ensure-loaded!` again
+- **AND** failed or idle states retry replication
 
 #### Scenario: Low-pressure replication settings
-- **WHEN** replication is started by the task
+- **WHEN** replication is started by the dictionary loader
 - **THEN** it uses conservative settings to minimize load:
   - `batch_size: 100`
   - `batches_limit: 1`

@@ -28,15 +28,15 @@
     - Update tests (tasks/examples/migrations) to assert `data` payloads and cover the migration.
 
 ## 4. Dictionary Sync Module
-- [x] 4.1 Implement background dictionary sync module that checks `dictionary-meta` and triggers `PouchDB/replicate.from` on initial load.
+- [x] 4.1 Implement background dictionary sync module that verifies `dictionary-meta` and triggers `PouchDB/replicate.from` on startup.
 - [x] 4.2 Implement dictionary loader with public API for initialization and status checks.
   - Plan:
     - Add CLJS helper `replicate-from` in `src/shared/db.cljc` for one-way pull replication with default remote URL, retry/backoff, and replication object return.
     - Implement `dictionary_sync` module with in-memory state (`:idle`/`:syncing`/`:ready`/`:failed`), `loaded?`, and `start-sync!`.
     - **Dropped** BroadcastChannel leader election — the SW is single-instance, so multi-tab coordination is handled by architecture. PouchDB checkpoints make concurrent replication idempotent.
     - **Dropped** separate `init!` — redundant; `ensure-loaded!` is the sole public entry point.
-    - Integrate `ensure-loaded!` in SW `activate` handler (`waitUntil` chain after `tasks/start!`) instead of `application.cljs`.
-    - Manual verification: fresh install triggers sync, subsequent starts skip, single SW means only one sync runs across tabs.
+    - Integrate `ensure-loaded!` in SW `activate` handler (`waitUntil` chain after `tasks/start!`) and retry from app interceptor when not ready.
+    - Manual verification: fresh install triggers sync, subsequent starts run incremental checkpoint checks, single SW means one sync process across tabs.
 
 ## 5. Autocomplete
 - [x] 5.0 Extend `db/all-docs` to accept options map (`startkey`, `endkey`, `limit`, `include_docs`).
@@ -68,12 +68,12 @@
   - Use a `word-autocomplete` custom element to encapsulate behavior and reset logic.
   - HTMX: `hx-get="/dictionary-entries"`, `hx-trigger="input changed delay:200ms"`,
     `hx-target` to the suggestions container, send `value` from input.
-  - Keyboard UX: arrows move active item; Tab/Enter select; Escape clears.
+  - Keyboard UX: arrows move active item; Tab selects; Escape clears.
   - Selection applies canonical value; translation fills from suggestion when present; no auto-prefill on input.
   - Include `/js/word-autocomplete.js` in base layout and precache in the service worker.
 - 6.2 Dictionary loader startup.
   - No UI startup hook.
-  - Schedule `dictionary-sync` task from SW after `tasks/start!` and avoid blocking `waitUntil`.
+  - Call `dictionary-sync/ensure-loaded!` from SW after `tasks/start!` and keep it non-blocking.
 
 #### 6.x Autocomplete Fixes (UI + Data)
 
@@ -107,10 +107,10 @@
 
 ## 7. Testing
 - [x] 7.0 Add automated tests for `dictionary/suggest` (empty input, dedupe, ranking, prefill) in `test/client/dictionary_test.cljs`.
-- [ ] 7.1 Create test documentation for dictionary sync scenarios (fresh install, interruption, offline, no re-sync).
-- [ ] 7.2 Create test documentation for autocomplete scenarios (prefix lookup, exact match, case insensitivity, performance).
-- [ ] 7.3 Create regression checklist for existing flows after database split.
+- [x] 7.1 Create test documentation for dictionary sync scenarios (fresh install, interruption, offline, incremental startup sync) in `docs/testing/dictionary-sync.md`.
+- [x] 7.2 Create test documentation for autocomplete scenarios (prefix lookup, exact match, case insensitivity, performance) in `docs/testing/autocomplete.md`.
+- [x] 7.3 Create regression checklist for existing flows after database split in `docs/testing/db-split-regression.md`.
 
 ## 8. Verification
-- [ ] 8.1 Measure dictionary DB size and index overhead after import; document in `docs/dictionary-size.md`.
-- [ ] 8.2 Smoke test: new install syncs dictionary, autocomplete suggestions appear, add-word prefills canonical value.
+- [x] 8.1 Measure dictionary DB size and index overhead after import; document in `docs/dictionary-size.md`.
+- [x] 8.2 Smoke test: new install syncs dictionary, autocomplete suggestions appear, add-word prefills canonical value.

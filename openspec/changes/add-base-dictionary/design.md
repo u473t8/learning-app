@@ -61,18 +61,20 @@ The app needs a predefined German dictionary to support autocomplete, canonical 
 
 - Autocomplete UI behavior:
   - `word-autocomplete` custom element manages suggestions, keyboard navigation, and reset.
-  - Arrow keys move selection; Tab/Enter select; Escape clears.
+  - Arrow keys move selection; Tab selects; Escape clears.
   - Translation hint appears as a ghost value when the translation input is empty.
   - Selecting a suggestion sets the German input to the lemma and fills translation when present.
   - UI uses the `/js/word-autocomplete.js` asset and standard HTMX swaps (no morph extension usage).
 
 - Dictionary sync strategy:
-  - Check `dictionary-meta` document on app start.
-  - If not loaded, trigger `PouchDB/replicate.from` with `live: false`.
+  - Trigger `dictionary-sync/ensure-loaded!` from SW `activate` after migrations/task runner startup.
+  - Also trigger `dictionary-sync/ensure-loaded!` from request interceptor when loader state is not ready.
+  - Each invocation starts a one-shot `PouchDB/replicate.from` with `live: false`.
   - Sync runs in background, non-blocking.
+  - After replication, verify `dictionary-meta` exists before marking sync state ready.
   - PouchDB handles interruptions, retries, and checkpoints automatically.
   - No UI feedback, dev-only logging.
-  - Retry on page reload: SW `ping` handler re-triggers `ensure-loaded!` if dictionary is not yet ready (e.g. server was unavailable on first attempt).
+  - Retries happen on subsequent `ensure-loaded!` invocations (next request and next startup).
 
 - Service worker update strategy:
   - New SW probes active SW via `BroadcastChannel` to detect manual update support.
