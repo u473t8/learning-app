@@ -25,7 +25,10 @@
   [dict-db]
   (p/create
    (fn [resolve reject]
-     (let [repl (db/replicate-from dict-db {:batch-size 100 :batches-limit 1})]
+     (let [repl (db/replicate-from dict-db
+                                   {:batch-size    100
+                                    :batches-limit 1
+                                    :checkpoint    "target"})]
        (.on
         repl
         "complete"
