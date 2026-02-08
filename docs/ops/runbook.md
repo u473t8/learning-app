@@ -12,6 +12,14 @@ The workflow enforces this order:
 - Run app and dictionary deploy in parallel.
 - If infra changed, app and dictionary deploy are forced even when their own paths are unchanged.
 
+Manual dispatch supports granular deploy targets:
+- `force_deploy=true` deploys infra + app + dictionary.
+- `deploy_infra=true` deploys infra only.
+- `deploy_app=true` deploys app only.
+- `deploy_dictionary=true` deploys dictionary only.
+- Multiple targets can be combined in one run.
+- If no target is selected and `force_deploy` is false, the workflow fails fast.
+
 1) Install or upgrade the infra package (idempotent).
 ```sh
 sudo dpkg -i learning-app-infra.deb || sudo apt-get -f install
