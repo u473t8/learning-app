@@ -19,7 +19,8 @@ jobs:
         with:
           cli: latest
 
-      - uses: actions/cache/restore@v5.0.2
+      - id: cache-clojure
+        uses: actions/cache/restore@v5.0.2
         with:
           path: |
             ~/.m2/repository
@@ -30,7 +31,7 @@ jobs:
       - run: clojure -T:build dictionary-import
 
       - uses: actions/cache/save@v5.0.2
-        if: always()
+        if: ${{ always() && steps.cache-clojure.outputs.cache-hit != 'true' }}
         with:
           path: |
             ~/.m2/repository
