@@ -38,7 +38,7 @@ jobs:
             ~/.deps.clj
           key: clojure-${{ hashFiles('deps.edn') }}
 
-      - name: Ensure dictionary directories and ownership
+      - name: Verify dictionary directories access
         uses: appleboy/ssh-action@v1.2.4
         with:
           host: ${{ secrets.HOST }}
@@ -46,13 +46,22 @@ jobs:
           key: ${{ secrets.KEY }}
           script: |
             set -euo pipefail
-            if ! sudo -n systemctl --version >/dev/null 2>&1; then
-              echo "ERROR: CI user must have passwordless sudo for deployment commands" >&2
+            if [ ! -d /opt/learning-app/dictionary ]; then
+              echo "ERROR: missing /opt/learning-app/dictionary; deploy infra first" >&2
               exit 1
             fi
-            sudo -n mkdir -p /opt/learning-app/dictionary /var/lib/learning-app/dictionary
-            sudo -n chown webapp:webapp /var/lib/learning-app/dictionary
-            sudo -n chmod 750 /var/lib/learning-app/dictionary
+            if [ ! -d /var/lib/learning-app/dictionary ]; then
+              echo "ERROR: missing /var/lib/learning-app/dictionary; deploy infra first" >&2
+              exit 1
+            fi
+            if [ ! -w /opt/learning-app/dictionary ]; then
+              echo "ERROR: deploy user cannot write /opt/learning-app/dictionary" >&2
+              exit 1
+            fi
+            if [ ! -w /var/lib/learning-app/dictionary ]; then
+              echo "ERROR: deploy user cannot write /var/lib/learning-app/dictionary" >&2
+              exit 1
+            fi
 
       - name: Upload dictionary import jar
         uses: appleboy/scp-action@v1.0.0
@@ -99,9 +108,7 @@ jobs:
               echo "ERROR: CI user must have passwordless sudo for deployment commands" >&2
               exit 1
             fi
-            sudo -n chmod +x /opt/learning-app/dictionary/import.sh
-            sudo -n chown webapp:webapp /var/lib/learning-app/dictionary
-            sudo -n chmod 750 /var/lib/learning-app/dictionary
+            chmod 755 /opt/learning-app/dictionary/import.sh
 
             if ! sudo -n systemctl cat learning-app-dictionary-import.service >/dev/null 2>&1; then
               echo "ERROR: learning-app-dictionary-import.service is missing. Deploy infra first." >&2

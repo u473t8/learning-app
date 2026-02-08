@@ -34,13 +34,13 @@ The import validates input checksums and writes `/var/lib/learning-app/dictionar
 
 If infra deployment fails in GitHub Actions, `deploy-master` stops before app/dictionary deploy. This is expected and safe.
 
-CI prerequisite: deploy SSH user must have passwordless sudo for deploy commands (`dpkg`, `apt-get`, `systemctl`, `nginx`, `mkdir`, `chown`, `chmod`).
+CI prerequisite: deploy SSH user must have passwordless sudo for deploy commands (`dpkg`, `apt-get`, `systemctl`, `nginx`).
 
 Quick fix when logs show `sudo: a terminal is required`:
 ```sh
 sudo visudo -f /etc/sudoers.d/learning-app-deployer-ci
 # add exactly this line and save:
-# deployer ALL=(root) NOPASSWD: /usr/bin/dpkg, /usr/bin/apt-get, /usr/bin/systemctl, /usr/sbin/nginx, /usr/bin/mkdir, /usr/bin/chown, /usr/bin/chmod
+# deployer ALL=(root) NOPASSWD: /usr/bin/dpkg, /usr/bin/apt-get, /usr/bin/systemctl, /usr/sbin/nginx
 sudo chmod 440 /etc/sudoers.d/learning-app-deployer-ci
 sudo visudo -cf /etc/sudoers.d/learning-app-deployer-ci
 sudo -u deployer sudo -n systemctl --version >/dev/null
