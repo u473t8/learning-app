@@ -27,6 +27,7 @@ if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
   rm -f /etc/environment.d/learning-app.conf
   rm -f /etc/sysusers.d/learning-app.conf
   rm -f /etc/tmpfiles.d/learning-app.conf
+  rm -f /etc/sudoers.d/learning-app-deployer-ci
 
   # 4. Remove credentials
   rm -f /etc/credstore.encrypted/borg-passphrase

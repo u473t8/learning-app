@@ -46,9 +46,13 @@ jobs:
           key: ${{ secrets.KEY }}
           script: |
             set -euo pipefail
-            sudo mkdir -p /opt/learning-app/dictionary /var/lib/learning-app/dictionary
-            sudo chown webapp:webapp /var/lib/learning-app/dictionary
-            sudo chmod 750 /var/lib/learning-app/dictionary
+            if ! sudo -n systemctl --version >/dev/null 2>&1; then
+              echo "ERROR: CI user must have passwordless sudo for deployment commands" >&2
+              exit 1
+            fi
+            sudo -n mkdir -p /opt/learning-app/dictionary /var/lib/learning-app/dictionary
+            sudo -n chown webapp:webapp /var/lib/learning-app/dictionary
+            sudo -n chmod 750 /var/lib/learning-app/dictionary
 
       - name: Upload dictionary import jar
         uses: appleboy/scp-action@v1.0.0
@@ -91,17 +95,21 @@ jobs:
           key: ${{ secrets.KEY }}
           script: |
             set -euo pipefail
-            sudo chmod +x /opt/learning-app/dictionary/import.sh
-            sudo chown webapp:webapp /var/lib/learning-app/dictionary
-            sudo chmod 750 /var/lib/learning-app/dictionary
+            if ! sudo -n systemctl --version >/dev/null 2>&1; then
+              echo "ERROR: CI user must have passwordless sudo for deployment commands" >&2
+              exit 1
+            fi
+            sudo -n chmod +x /opt/learning-app/dictionary/import.sh
+            sudo -n chown webapp:webapp /var/lib/learning-app/dictionary
+            sudo -n chmod 750 /var/lib/learning-app/dictionary
 
-            if ! sudo systemctl cat learning-app-dictionary-import.service >/dev/null 2>&1; then
+            if ! sudo -n systemctl cat learning-app-dictionary-import.service >/dev/null 2>&1; then
               echo "ERROR: learning-app-dictionary-import.service is missing. Deploy infra first." >&2
               exit 1
             fi
 
-            sudo systemctl daemon-reload
-            sudo systemctl start learning-app-dictionary-import.service
+            sudo -n systemctl daemon-reload
+            sudo -n systemctl start learning-app-dictionary-import.service
 
             curl -sf http://127.0.0.1:5984/dictionary-db/dictionary-meta >/dev/null
             curl -sf --resolve sprecha.de:443:127.0.0.1 \
