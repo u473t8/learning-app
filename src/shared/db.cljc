@@ -495,7 +495,7 @@
      ([db]
       (replicate-from db {}))
      ([db
-       {:keys [remote-url live retry backoff-ms batch-size batches-limit]
+       {:keys [remote-url live retry backoff-ms batch-size batches-limit checkpoint]
         :or   {live false retry true backoff-ms 60000}}]
       (let [dbname (.-name ^js db)
             remote (or remote-url
@@ -505,8 +505,9 @@
                                 :back_off_function
                                 (fn [delay]
                                   (if (zero? delay) 1000 (min backoff-ms (* 2 delay))))}
-                     batch-size    (doto (aset "batch_size" batch-size))
-                     batches-limit (doto (aset "batches_limit" batches-limit)))]
+                     batch-size         (doto (aset "batch_size" batch-size))
+                     batches-limit      (doto (aset "batches_limit" batches-limit))
+                     (some? checkpoint) (doto (aset "checkpoint" checkpoint)))]
         (.replicate PouchDB remote dbname opts)))))
 
 
