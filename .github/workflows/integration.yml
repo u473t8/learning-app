@@ -40,7 +40,10 @@ jobs:
             clojure-
 
       - run: npm ci
-      - run: npx shadow-cljs compile node-test
+      - name: Run client tests
+        run: |
+          npx shadow-cljs compile node-test
+          node target/node-tests.js
 
       - uses: actions/cache/save@v5.0.2
         if: ${{ always() && steps.cache-clojure.outputs.cache-hit != 'true' }}

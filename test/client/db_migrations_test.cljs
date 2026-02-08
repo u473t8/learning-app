@@ -232,11 +232,15 @@
                                              :migration-id "local-db-split"
                                              :created-at   (utils/now-iso)}))
                                :complete)))]
-           ;; First call fails — resolves to false (no rejection)
-           (p/let [result1 (sut/ensure-migrated!)]
-             (is (false? result1))
-             (is (= :failed (sut/migration-status)))
-             ;; Second call retries — succeeds
+           ;; First call fails — rejects and sets status to :failed.
+           (p/do
+             (p/catch
+               (p/do
+                 (sut/ensure-migrated!)
+                 (is false "First ensure-migrated! call should reject"))
+               (fn [_]
+                 (is (= :failed (sut/migration-status)))))
+             ;; Second call retries — succeeds.
              (p/let [result2 (sut/ensure-migrated!)]
                (is (true? result2))
                (is (= 2 @call-count))
