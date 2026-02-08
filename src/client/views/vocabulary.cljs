@@ -26,37 +26,25 @@
          :hx-trigger "submit"
          :hx-swap    "outerHTML"
          :hx-target  (str "#" item-id)}
-        [:word-autocomplete
-         [:div.word-item__inputs
-          [:div.autocomplete
-           [:input.word-item__input
-            {:name           "value"
-             :autocapitalize "off"
-             :autocomplete   "off"
-             :autocorrect    "off"
-             :autofocus      true
-             :data-ac-role   "word"
-             :hx-get         "/dictionary-entries"
-             :hx-trigger     "input changed delay:200ms"
-             :hx-sync        "this:replace"
-             :hx-target      "next [data-ac-role='list']"
-             :hx-swap        "innerHTML"
-             :hx-include     "this"
-             :lang           "de"
-             :placeholder    "Слово"
-             :value          value}]
-           [:ul.suggestions
-            {:data-ac-role "list"}]]
-          [:span.word-item__arrow "→"]
-          [:input.word-item__input
-           {:name           "translation"
-            :autocapitalize "off"
-            :autocomplete   "off"
-            :autocorrect    "off"
-            :data-ac-role   "translation"
-            :lang           "ru"
-            :placeholder    "Перевод"
-            :value          translation}]]]
+        [:div.word-item__inputs
+         [:input.word-item__input
+          {:name           "value"
+           :autocapitalize "off"
+           :autocomplete   "off"
+           :autocorrect    "off"
+           :autofocus      true
+           :lang           "de"
+           :placeholder    "Слово"
+           :value          value}]
+         [:span.word-item__arrow "→"]
+         [:input.word-item__input
+          {:name         "translation"
+           :autocapitalize "off"
+           :autocomplete "off"
+           :autocorrect  "off"
+           :lang         "ru"
+           :placeholder  "Перевод"
+           :value        translation}]]
         [:div.word-item__actions
          [:button.word-item__save {:type "submit"} "Сохранить"]
          [:button.word-item__cancel
@@ -119,39 +107,16 @@
   [{:keys [value-blank? translation-blank?]}]
   (cond-> (list)
     value-blank?
+    (conj
+     [:input.new-word-form__input.new-word-form__input--error
+      {:hx-swap-oob "true" :id "new-word-value" :name "value" :value ""}])
     translation-blank?
     (conj
-     [:input.new-word-form__input.new-word-form__input--quick.new-word-form__input--error
-      {:id             "new-word-value"
-       :name           "value"
-       :autocapitalize "off"
-       :autocomplete   "off"
-       :autocorrect    "off"
-       :data-ac-role   "word"
-       :hx-get         "/dictionary-entries"
-       :hx-trigger     "input changed delay:200ms"
-       :hx-sync        "this:replace"
-       :hx-target      "next [data-ac-role='list']"
-       :hx-swap        "innerHTML"
-       :hx-include     "this"
-       :hx-swap-oob    "true"
-       :lang           "de"
-       :placeholder    "Новое слово"
-       :required       true
-       :value          ""}])
-    (conj
-     [:input.new-word-form__input.new-word-form__input--quick.new-word-form__input--error
-      {:hx-swap-oob  "true"
-       :id           "new-word-translation"
-       :name         "translation"
-       :data-ac-role "translation"
-       :autocapitalize "off"
-       :autocomplete "off"
-       :autocorrect  "off"
-       :lang         "ru"
-       :placeholder  "Перевод"
-       :required     true
-       :value        ""}])))
+     [:input.new-word-form__input.new-word-form__input--error
+      {:hx-swap-oob "true"
+       :id          "new-word-translation"
+       :name        "translation"
+       :value       ""}])))
 
 
 (defn words-page

@@ -27,8 +27,6 @@
  :dev-http
  {8021 "target/browser-test"}
 
- :cache-blockers #{sw-version}
-
  :builds
  {:app
   {:target :browser

@@ -10,8 +10,7 @@ StateDirectory=learning-app
 ExecStart=sh -c './backup.sh'
 
 # Environment
-EnvironmentFile=-/etc/environment.d/learning-app.conf
-EnvironmentFile=-/etc/learning-app/environment
+EnvironmentFile=/etc/learning-app/environment
 LoadCredentialEncrypted=borg-passphrase:/etc/credstore.encrypted/borg-passphrase
 Environment=BORG_PASSPHRASE_PATH=%d/borg-passphrase
 Environment=LEARNING_APP_DB_BACKUP_PATH=/var/backups/learning-app/db.sqlite

@@ -1,9 +1,6 @@
 (ns application
   (:require
    [db :as db]
-   [dbs :as dbs]
-   [dictionary :as dictionary]
-   [dictionary-sync :as dictionary-sync]
    [domain.vocabulary :as domain.vocabulary]
    [examples :as examples]
    [hiccup :as hiccup]
@@ -14,7 +11,6 @@
    [reitit.http.interceptors.keyword-parameters :as keyword-parameters]
    [reitit.http.interceptors.parameters :as parameters]
    [reitit.interceptor.sieppari :as sieppari]
-   [views.dictionary :as views.dictionary]
    [views.home :as views.home]
    [views.lesson :as views.lesson]
    [views.vocabulary :as views.word]
@@ -41,10 +37,9 @@
      [:link {:rel "manifest" :href "/manifest.json"}]
      [:link {:rel "stylesheet" :href "/css/styles.css"}]
      [:script {:src "/js/htmx/htmx.min.js" :defer true}]
-     [:script {:src "/js/word-autocomplete.js" :defer true}]
-     [:script {:src "/js/sw-bridge.js" :defer true}]
+     [:script {:src "/js/htmx/idiomorph-ext.min.js" :defer true}]
      head]
-    [:body
+    [:body {:hx-ext "morph"}
      [:a.app-logo
       {:href        "/home"
        :hx-get      "/home"
@@ -56,8 +51,7 @@
      [:div#loader.loader
       [:div.loader__list {:style {:--items-count 1}}
        [:div.loader__text "Загружаем..."]]]
-     [:div#app body]
-     [:div#sw-update-veil.sw-update-veil "Обновляем\u2026"]]]))
+     [:div#app body]]]))
 
 
 ;;
@@ -80,62 +74,29 @@
   "Injects database instance into request."
   {:name  ::db-interceptor
    :enter (fn [ctx]
-            (update ctx
-                    :request       assoc
-                    :user-db       (dbs/user-db)
-                    :device-db     (dbs/device-db)
-                    :dictionary-db (dbs/dictionary-db)))})
-
-
-(def dictionary-sync-interceptor
-  "Retries dictionary sync if it failed (e.g. server was unavailable)."
-  {:name  ::dictionary-sync-interceptor
-   :enter (fn [ctx]
-            (when-not (dictionary-sync/loaded?)
-              (dictionary-sync/ensure-loaded!))
-            ctx)})
-
-
-(def app-update-interceptor
-  "Injects SW update pending flag into request."
-  {:name  ::sw-update-interceptor
-   :enter (fn [ctx]
-            (p/let [pending-doc (db/get (dbs/device-db) "sw-update-pending")]
-              (assoc-in ctx [:request :sw/update-pending?] (:pending pending-doc))))})
+            (assoc-in ctx [:request :db] (db/use "local-db")))})
 
 
 (def ui-routes
   [[""
     ["/home"
-     {:get (fn [{:keys [user-db sw/update-pending?]}]
-             (p/let [word-count (vocabulary/count user-db)]
-               {:html/body (views.home/home {:word-count      word-count
-                                             :update-pending? update-pending?})}))}]
-
-    ["/dictionary-entries"
-     {:get (fn [{:keys [dictionary-db params]}]
-             (-> (p/let [{:keys [suggestions prefill]}
-                         (dictionary/suggest dictionary-db (:value params))]
-                   {:html/body (views.dictionary/suggestions suggestions prefill)
-                    :status    200})
-                 (p/catch
-                   (fn [_err]
-                     {:html/body (views.dictionary/suggestions [] nil)
-                      :status    200}))))}]
+     {:get (fn [{:keys [db]}]
+             (p/let [word-count (vocabulary/count db)]
+               {:html/body (views.home/home {:word-count word-count})}))}]
 
     ["/words"
-     {:head (fn [{:keys [user-db]}]
-              (p/let [total (vocabulary/count user-db)]
+     {:head (fn [{:keys [db]}]
+              (p/let [total (vocabulary/count db)]
                 {:status  200
                  :headers {"X-Total-Count" (str total)}}))
 
-      :get  (fn [{:keys [user-db params headers]}]
+      :get  (fn [{:keys [db params headers]}]
               (let [{:keys [pages search] :or {pages 1}} params
                     page-size   10
                     limit       (-> pages js/parseInt (* page-size) inc)
                     htmx-target (get headers "hx-target")]
-                (p/let [words (vocabulary/list user-db {:limit limit :search search})
-                        total (vocabulary/count user-db)]
+                (p/let [words (vocabulary/list db {:limit limit :search search})
+                        total (vocabulary/count db)]
                   {:headers   {"X-Total-Count" (str total)}
                    :html/body (if (= htmx-target "word-list")
                                 (views.word/word-list
@@ -146,51 +107,51 @@
                                 (views.word/words-page {:empty? (zero? total)}))
                    :status    200})))
 
-      :post (fn [{:keys [user-db params]}]
+      :post (fn [{:keys [db params]}]
               (let [{:keys [value translation]} params
                     result (domain.vocabulary/validate-new-word value translation)]
                 (if-let [error (:error result)]
                   {:html/body (views.word/validation-error-inputs error)
                    :status    400}
-                  (p/let [word-id (vocabulary/add! user-db value translation)]
+                  (p/let [word-id (vocabulary/add! db value translation)]
                     (examples/create-fetch-task! word-id)
                     {:status 201}))))}]
 
     ["/words-count"
-     {:get (fn [{:keys [user-db]}]
-             (p/let [total (vocabulary/count user-db)
+     {:get (fn [{:keys [db]}]
+             (p/let [total (vocabulary/count db)
                      class (if (zero? total) "word-count--empty" "word-count--ready")]
                {:html/body [:span#word-count {:class class} (str total)]
                 :status    200}))}]
 
     ["/words/:id"
-     {:get    (fn [{:keys [user-db path-params params]}]
+     {:get    (fn [{:keys [db path-params params]}]
                 (let [word-id (:id path-params)
                       edit?   (= "true" (:edit params))]
-                  (p/let [word (vocabulary/get user-db word-id)]
+                  (p/let [word (vocabulary/get db word-id)]
                     (if word
                       {:html/body (views.word/word-list-item word {:editing? edit?})
                        :status    200}
                       {:status 404}))))
 
-      :put    (fn [{:keys [user-db path-params params]}]
+      :put    (fn [{:keys [db path-params params]}]
                 (let [word-id (:id path-params)
                       {:keys [value translation]} params
                       result  (domain.vocabulary/validate-word-update
                                {:word-id word-id :value value :translation translation})]
                   (if-let [error (:error result)]
                     {:status 400 :body error}
-                    (p/let [word (vocabulary/update! user-db word-id value translation)]
+                    (p/let [word (vocabulary/update! db word-id value translation)]
                       (if word
                         {:html/body (views.word/word-list-item word)
                          :status    200}
                         {:status 404})))))
 
-      :delete (fn [{:keys [user-db path-params]}]
+      :delete (fn [{:keys [db path-params]}]
                 (let [word-id (:id path-params)]
                   (p/do
-                    (vocabulary/delete! user-db word-id)
-                    (p/let [total (vocabulary/count user-db)]
+                    (vocabulary/delete! db word-id)
+                    (p/let [total (vocabulary/count db)]
                       (if (zero? total)
                         {:headers   {"HX-Retarget" "#app" "HX-Reswap" "innerHTML"}
                          :html/body (views.word/words-page {:empty? true})
@@ -198,8 +159,8 @@
                         {:status 200})))))}]
 
     ["/lesson"
-     {:get    (fn [{:keys [user-db device-db]}]
-                (p/let [{:keys [lesson-state error]} (lesson/ensure! user-db device-db {:trial-selector :random})]
+     {:get    (fn [{:keys [db]}]
+                (p/let [{:keys [lesson-state error]} (lesson/ensure! db {:trial-selector :random})]
                   (cond
                     lesson-state
                     {:html/body (views.lesson/page lesson-state) :status 200}
@@ -210,17 +171,17 @@
                     :else
                     (throw (ex-info "Failed to create lesson" {:error error})))))
 
-      :delete (fn [{:keys [user-db device-db]}]
-                (p/let [_ (lesson/finish! device-db)
-                        word-count (vocabulary/count user-db)]
+      :delete (fn [{:keys [db]}]
+                (p/let [_ (lesson/finish! db)
+                        word-count (vocabulary/count db)]
                   {:headers   {"HX-Push-Url" "/home"}
                    :html/body (views.home/home {:word-count word-count})
                    :status    200}))}]
 
     ["/lesson/answer"
-     {:post (fn [{:keys [user-db device-db params]}]
+     {:post (fn [{:keys [db params]}]
               (let [answer (:answer params)]
-                (p/let [{:keys [lesson-state]} (lesson/check-answer! user-db device-db answer)]
+                (p/let [{:keys [lesson-state]} (lesson/check-answer! db answer)]
                   (if lesson-state
                     (let [{:keys [challenge progress footer]} (presenter.lesson/page-props lesson-state)]
                       {:html/body (list
@@ -231,8 +192,8 @@
                     {:status 404}))))}]
 
     ["/lesson/next"
-     {:post (fn [{:keys [device-db]}]
-              (p/let [{:keys [lesson-state]} (lesson/advance! device-db)]
+     {:post (fn [{:keys [db]}]
+              (p/let [{:keys [lesson-state]} (lesson/advance! db)]
                 (if lesson-state
                   (let [{:keys [challenge progress]}
                         (presenter.lesson/page-props lesson-state)]
@@ -250,8 +211,6 @@
     ui-routes
 
     {:data {:interceptors [db-interceptor
-                           dictionary-sync-interceptor
-                           app-update-interceptor
                            (parameters/parameters-interceptor)
                            (keyword-parameters/keyword-parameters-interceptor)
                            (hiccup/interceptor {:layout-fn nil})

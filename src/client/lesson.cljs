@@ -10,38 +10,25 @@
 
 
 (defn- state
-  [device-db]
-  (db/get device-db domain/lesson-id))
-
-
-(def max-answer-length
-  1000)
-
-
-(defn- clamp-answer
-  [answer]
-  (let [answer (or answer "")]
-    (if (> (count answer) max-answer-length)
-      (subs answer 0 max-answer-length)
-      answer)))
+  [db]
+  (db/get db domain/lesson-id))
 
 
 (defn start!
   "Start a new lesson. Fetches words and examples, creates and persists lesson state.
    Returns {:lesson-state ...} or {:error ...}"
-  ([user-db device-db]
-   (start! user-db device-db {}))
-  ([user-db device-db
+  ([db] (start! db {}))
+  ([db
     {:keys [words-per-lesson trial-selector]
      :or   {words-per-lesson domain/default-words-per-lesson}}]
    (p/catch
-     (p/let [selected-words (vocabulary/list user-db {:order :asc :limit words-per-lesson})]
+     (p/let [selected-words (vocabulary/list db {:order :asc :limit words-per-lesson})]
        (if-not (seq selected-words)
          {:error :no-words-available}
          (p/let [word-ids      (mapv :id selected-words)
-                 examples      (examples/list device-db word-ids)
+                 examples      (examples/list db word-ids)
                  lesson-state  (domain/initial-state selected-words examples trial-selector (utils/now-iso))
-                 {:keys [rev]} (db/insert device-db lesson-state)]
+                 {:keys [rev]} (db/insert db lesson-state)]
            {:lesson-state (assoc lesson-state :_rev rev)})))
      (fn [err]
        (log/error :lesson/start-failed {:error (ex-message err)})
@@ -51,22 +38,20 @@
 (defn ensure!
   "Returns existing lesson or starts a new one.
    Returns {:lesson-state ...} or {:error ...}"
-  ([user-db device-db]
-   (ensure! user-db device-db {}))
-  ([user-db device-db opts]
-   (p/let [existing (state device-db)]
+  ([db] (ensure! db {}))
+  ([db opts]
+   (p/let [existing (state db)]
      (if existing
        {:lesson-state existing}
-       (start! user-db device-db opts)))))
+       (start! db opts)))))
 
 
 (defn check-answer!
   "Check the user's answer for the current trial.
    Returns {:result {:correct? :correct-answer :is-finished?} :lesson-state ...}
    On error returns {:error :keyword :lesson-state ...}"
-  [user-db device-db answer]
-  (p/let [current-state (state device-db)
-          answer        (clamp-answer answer)]
+  [db answer]
+  (p/let [current-state (state db)]
     (if-not current-state
       (do
         (log/warn :lesson/check-answer-missing {:answer answer})
@@ -78,11 +63,11 @@
           (p/do
             (when (domain/word-trial? current-trial)
               (vocabulary/add-review
-               user-db
+               db
                (:word-id current-trial)
                (-> lesson-state domain/last-result :correct?)
                (:prompt current-trial)))
-            (p/let [{:keys [rev]} (db/insert device-db lesson-state)]
+            (p/let [{:keys [rev]} (db/insert db lesson-state)]
               {:lesson-state (assoc lesson-state :_rev rev)}))
           (fn [err]
             (log/error :lesson/check-answer-save-failed {:error (ex-message err)})
@@ -93,15 +78,15 @@
 (defn advance!
   "Select the next random trial from remaining trials.
    Returns {:lesson-state ...} or {:error ...} or nil if no more trials."
-  [device-db]
-  (p/let [lesson-state (state device-db)]
+  [db]
+  (p/let [lesson-state (state db)]
     (if-not lesson-state
       (do
         (log/warn :advance-lesson/missing-state {})
         {:error :lesson-not-found})
       (when-let [next-state (domain/advance lesson-state)]
         (p/catch
-          (p/let [{:keys [rev]} (db/insert device-db next-state)]
+          (p/let [{:keys [rev]} (db/insert db next-state)]
             {:lesson-state (assoc next-state :_rev rev)})
           (fn [err]
             (log/error :advance-lesson/save-failed {:error (ex-message err)})
@@ -109,7 +94,7 @@
 
 
 (defn finish!
-  [device-db]
-  (p/let [existing (state device-db)]
+  [db]
+  (p/let [existing (state db)]
     (when existing
-      (db/remove device-db existing))))
+      (db/remove db existing))))

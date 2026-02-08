@@ -14,14 +14,8 @@ if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
   systemctl stop learning-app-restart.path || true
   systemctl disable learning-app-restart.path || true
 
-  systemctl stop couchdb.service || true
-  systemctl disable couchdb.service || true
-
   # 2. Remove systemd units
   rm -f /etc/systemd/system/learning-app-*
-
-  # Remove admin setup command
-  rm -f /usr/local/bin/learning-app-admin-setup
 
   # 3. Remove environment, sysusers and tmpfiles config
   rm -f /etc/environment.d/learning-app.conf
@@ -31,7 +25,6 @@ if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
   # 4. Remove credentials
   rm -f /etc/credstore.encrypted/borg-passphrase
   rm -f /etc/credstore.encrypted/openai_api_key
-  rm -f /etc/credstore.encrypted/couchdb_admin_password
 
   # 5. Remove users if exist, with their home directories
   if id webapp &>/dev/null; then

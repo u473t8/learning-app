@@ -29,15 +29,6 @@ server {
     proxy_set_header X-Auth-CouchDB-Roles    "";
     proxy_set_header X-Auth-CouchDB-Token    "";
 
-    # CouchDB dictionary-db (public read-only, no auth required)
-    location /db/dictionary-db/ {
-        proxy_pass http://localhost:5984/dictionary-db/;
-        proxy_redirect off;
-        proxy_buffering off;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-
     location /db/ {
         # 1. Ask backend to validate request
         auth_request /auth/check;

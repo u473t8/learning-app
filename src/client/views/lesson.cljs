@@ -47,12 +47,11 @@
    [:form.learning-session__footer.learning-session__footer--input
     {:hx-post "/lesson/answer" :hx-target "#lesson-footer" :hx-swap "outerHTML"}
     [:textarea.text-input
-     {:id "lesson-answer"
-      :name "answer"
+     {:id          "lesson-answer"
+      :name        "answer"
       :placeholder "Введите перевод..."
-      :maxlength 1000
-      :autofocus true
-      :lang "de"
+      :autofocus   true
+      :lang        "de"
       :hx-on:keydown
       "if(event.key==='Enter' && (event.ctrlKey || event.metaKey)){event.preventDefault(); this.form.requestSubmit();}"}]
     [:div.learning-session__action
@@ -82,7 +81,7 @@
 
 
 (defn- error
-  [{:keys [correct-answer user-answer]}]
+  [{:keys [correct-answer]}]
   [:div#lesson-footer
    {:tabindex "-1"
     :hx-on:htmx:afterSettle "var btn = this.querySelector('#lesson-next'); if(btn){btn.focus();}"
@@ -90,8 +89,6 @@
     "if(event.key==='Enter' || event.key===' ' || event.code==='Space'){event.preventDefault(); this.querySelector('form').requestSubmit();}"}
    [:div.learning-session__footer.learning-session__footer--error
     [:div.challenge-answer
-     [:p.challenge-answer__header "Ваш ответ:"]
-     [:p.challenge-answer__body {:lang "de"} (or user-answer "")]
      [:p.challenge-answer__header "Правильный ответ:"]
      [:p.challenge-answer__body {:lang "de"} correct-answer]]
     [:form {:hx-post "/lesson/next" :hx-target "#lesson-footer" :hx-swap "outerHTML"}
