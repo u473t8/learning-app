@@ -6,7 +6,9 @@
 
 (def target-dir "target")
 
+
 (def class-dir "target/classes")
+
 
 (def uber-file "target/learning-app.jar")
 
@@ -30,7 +32,8 @@
   (b/delete {:path "target"}))
 
 
-(defn uber [_]
+(defn uber
+  [_]
   (clean nil)
 
   (println "Copying resources...")

@@ -18,6 +18,8 @@
 
 
 (def test-device-db-name (db-fixtures/db-name "client.examples-test"))
+
+
 (def test-user-db-name (db-fixtures/db-name "client.examples-test-user"))
 
 
@@ -34,9 +36,9 @@
   "Sets up test DBs, calls (f dbs) where dbs is {:device-db ... :user-db ...}."
   [f]
   (db-fixtures/with-test-dbs
-    [test-device-db-name test-user-db-name]
-    (fn [[device-db user-db]]
-      (f {:device-db device-db :user-db user-db}))))
+   [test-device-db-name test-user-db-name]
+   (fn [[device-db user-db]]
+     (f {:device-db device-db :user-db user-db}))))
 
 
 ;; =============================================================================
@@ -180,12 +182,12 @@
 (deftest task-handler-returns-true-when-word-deleted
   (async-testing "task handler returns true when word is deleted"
     (with-test-dbs
-      (fn [dbs]
-        (p/let [result (tasks/execute-task
-                        {:task-type "example-fetch"
-                         :data      {:word-id "deleted-word"}}
-                        dbs)]
-          (is (true? result)))))))
+     (fn [dbs]
+       (p/let [result (tasks/execute-task
+                       {:task-type "example-fetch"
+                        :data      {:word-id "deleted-word"}}
+                       dbs)]
+         (is (true? result)))))))
 
 
 (deftest task-handler-fetches-and-saves-on-success
@@ -195,17 +197,17 @@
       (set! js/fetch (fetch-mocks/mock-fetch-success example))
       (p/finally
         (with-test-dbs
-          (fn [{:keys [user-db device-db] :as dbs}]
-            (p/do
-              (db/insert user-db {:_id "word-123" :type "vocab" :value "Hund"})
-              (p/let [result (tasks/execute-task
-                              {:task-type "example-fetch"
-                               :data      {:word-id "word-123"}}
-                              dbs)]
-                (is (true? result))
-                (p/let [examples (db-queries/fetch-examples device-db)]
-                  (is (= 1 (count examples)))
-                  (is (= "Der Hund läuft" (:value (first examples)))))))))
+         (fn [{:keys [user-db device-db] :as dbs}]
+           (p/do
+             (db/insert user-db {:_id "word-123" :type "vocab" :value "Hund"})
+             (p/let [result (tasks/execute-task
+                             {:task-type "example-fetch"
+                              :data      {:word-id "word-123"}}
+                             dbs)]
+               (is (true? result))
+               (p/let [examples (db-queries/fetch-examples device-db)]
+                 (is (= 1 (count examples)))
+                 (is (= "Der Hund läuft" (:value (first examples)))))))))
         (fn []
           (set! js/fetch original-fetch))))))
 
@@ -216,13 +218,13 @@
       (set! js/fetch (fetch-mocks/mock-fetch-error 500))
       (p/finally
         (with-test-dbs
-          (fn [{:keys [user-db] :as dbs}]
-            (p/do
-              (db/insert user-db {:_id "word-123" :type "vocab" :value "Hund"})
-              (p/let [result (tasks/execute-task
-                              {:task-type "example-fetch"
-                               :data      {:word-id "word-123"}}
-                              dbs)]
-                (is (false? result))))))
+         (fn [{:keys [user-db] :as dbs}]
+           (p/do
+             (db/insert user-db {:_id "word-123" :type "vocab" :value "Hund"})
+             (p/let [result (tasks/execute-task
+                             {:task-type "example-fetch"
+                              :data      {:word-id "word-123"}}
+                             dbs)]
+               (is (false? result))))))
         (fn []
           (set! js/fetch original-fetch))))))

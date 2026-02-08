@@ -2,6 +2,7 @@
   (:require [clojure.java.io :as io])
   (:import [java.security MessageDigest]))
 
+
 (defmacro precache-manifest
   "Returns {:list urls, :hash \"abcd1234\"} where hash is computed from
    the content of the corresponding files in resources/public/.

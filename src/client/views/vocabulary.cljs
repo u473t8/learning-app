@@ -141,17 +141,17 @@
        :value          ""}])
     (conj
      [:input.new-word-form__input.new-word-form__input--quick.new-word-form__input--error
-      {:hx-swap-oob   "true"
-       :id            "new-word-translation"
-       :name          "translation"
-       :data-ac-role  "translation"
+      {:hx-swap-oob  "true"
+       :id           "new-word-translation"
+       :name         "translation"
+       :data-ac-role "translation"
        :autocapitalize "off"
-       :autocomplete  "off"
-       :autocorrect   "off"
-       :lang          "ru"
-       :placeholder   "Перевод"
-       :required      true
-       :value         ""}])))
+       :autocomplete "off"
+       :autocorrect  "off"
+       :lang         "ru"
+       :placeholder  "Перевод"
+       :required     true
+       :value        ""}])))
 
 
 (defn words-page

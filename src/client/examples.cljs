@@ -84,11 +84,11 @@
           true)
 
         (p/catch
-         (p/let [example (fetch-one (:value word-doc))]
-           (save-example! device-db word-id (:value word-doc) example)
-           true)
+          (p/let [example (fetch-one (:value word-doc))]
+            (save-example! device-db word-id (:value word-doc) example)
+            true)
 
-         (fn [err]
-           (log/warn :example-fetch/failed {:word-id word-id :error (ex-message err)})
-           ;; Return false to trigger retry
-           false))))))
+          (fn [err]
+            (log/warn :example-fetch/failed {:word-id word-id :error (ex-message err)})
+            ;; Return false to trigger retry
+            false))))))

@@ -26,16 +26,20 @@
   (p/create
    (fn [resolve reject]
      (let [repl (db/replicate-from dict-db {:batch-size 100 :batches-limit 1})]
-       (.on repl "complete"
-            (fn [info]
-              (log/info :dictionary-sync/replication-complete
-                        {:docs-read  (.. info -docs_read)
-                         :docs-written (.. info -docs_written)})
-              (resolve info)))
-       (.on repl "error"
-            (fn [err]
-              (log/error :dictionary-sync/replication-error {:error (str err)})
-              (reject err)))))))
+       (.on
+        repl
+        "complete"
+        (fn [info]
+          (log/info :dictionary-sync/replication-complete
+                    {:docs-read    (.. info -docs_read)
+                     :docs-written (.. info -docs_written)})
+          (resolve info)))
+       (.on
+        repl
+        "error"
+        (fn [err]
+          (log/error :dictionary-sync/replication-error {:error (str err)})
+          (reject err)))))))
 
 
 (defn- start-sync!

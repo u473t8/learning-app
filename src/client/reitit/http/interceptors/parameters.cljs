@@ -25,9 +25,9 @@
                                        (js->clj :keywordize-keys true))
                   query-params (or query-params {})
                   content-type (-> ctx :request :headers (get "content-type"))
-                  ctx          (-> ctx
-                                   (assoc-in [:request :query-params] query-params)
-                                   (assoc-in [:request :params] query-params))]
+                  ctx (-> ctx
+                          (assoc-in [:request :query-params] query-params)
+                          (assoc-in [:request :params] query-params))]
               (log/debug :parameters-interceptor/enter {"Content-Type" content-type})
               (if (some-> content-type (str/includes? "application/x-www-form-urlencoded"))
                 (p/let [form-data (-> ctx :request :js/request .formData) ; a promise

@@ -134,7 +134,8 @@
 (defn migration-status [] (:status @migration-state))
 
 
-(defn- run-all-migrations! []
+(defn- run-all-migrations!
+  []
   (-> (p/do
         (p/doseq [{:keys [run]} migrations]
           (run))
@@ -147,7 +148,8 @@
           (throw err)))))
 
 
-(defn ensure-migrated! []
+(defn ensure-migrated!
+  []
   (let [{:keys [status promise]} @migration-state]
     (case status
       :done        (p/resolved true)
