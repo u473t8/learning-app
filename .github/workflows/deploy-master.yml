@@ -112,6 +112,7 @@ jobs:
     if: ${{ always() && needs.detect-changes.outputs.any_deploy == 'true' }}
     needs: [detect-changes, deploy-infra]
     runs-on: ubuntu-latest
+    environment: deployment
     steps:
       - name: Skip readiness checks when infra unchanged
         if: ${{ needs.detect-changes.outputs.infra_changed != 'true' }}
