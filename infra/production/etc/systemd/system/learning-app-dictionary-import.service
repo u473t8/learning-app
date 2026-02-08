@@ -7,11 +7,15 @@ Requires=couchdb.service
 Type=oneshot
 User=webapp
 WorkingDirectory=/var/lib/learning-app/dictionary
-ExecStart=/opt/learning-app/dictionary/import.sh --db dictionary-db --reset
+ExecStart=sh -c "COUCHDB_PASS=${COUCHDB_PASS:-$(cat ${COUCHDB_PASS_PATH})} exec /opt/learning-app/dictionary/import.sh --db dictionary-db --reset"
 
 # Environment
 EnvironmentFile=-/etc/learning-app/environment
 EnvironmentFile=-/etc/environment.d/learning-app.conf
+LoadCredentialEncrypted=couchdb_admin_password:/etc/credstore.encrypted/couchdb_admin_password
+Environment=COUCHDB_URL=http://127.0.0.1:5984
+Environment=COUCHDB_USER=admin
+Environment=COUCHDB_PASS_PATH=%d/couchdb_admin_password
 
 # Security settings
 NoNewPrivileges=yes

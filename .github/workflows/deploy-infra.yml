@@ -1,19 +1,12 @@
 name: Deploy Infrastructure
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'infra/production/**'
+  workflow_call:
 
 jobs:
-  integration:
-    uses: ./.github/workflows/integration.yml
-
   deployment:
     name: Build Infra Package
     runs-on: ubuntu-latest
     environment: deployment
-    needs: integration
     steps:
       - uses: actions/checkout@v6.0.2
 

@@ -4,7 +4,10 @@ Use this file to jump to the authoritative configuration files. Load only what y
 
 ## CI/CD
 
-- `.github/workflows/deploy.yaml` — GitHub Actions build + deploy.
+- `.github/workflows/deploy-master.yml` — deployment orchestrator for `master` merges.
+- `.github/workflows/deploy-infra.yml` — reusable infra deployment workflow.
+- `.github/workflows/deploy-app.yml` — reusable application deployment workflow.
+- `.github/workflows/deploy-dictionary.yml` — reusable dictionary deployment workflow.
 - `build.clj` — uberjar build and entrypoint.
 
 ## Production runtime

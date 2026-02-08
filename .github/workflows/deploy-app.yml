@@ -1,26 +1,12 @@
 name: Deploy Application
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'build.clj'
-      - 'deps.edn'
-      - 'shadow-cljs.edn'
-      - 'src/**'
-      - 'resources/**'
-      - '!resources/dictionary/**'
-      - 'package.json'
-      - 'package-lock.json'
+  workflow_call:
 
 jobs:
-  integration:
-    uses: ./.github/workflows/integration.yml
-
   deployment:
     name: Build Server Artifact
     runs-on: ubuntu-latest
     environment: deployment
-    needs: integration
     steps:
       - uses: actions/checkout@v6.0.2
 

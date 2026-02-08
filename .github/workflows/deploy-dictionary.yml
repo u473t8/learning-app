@@ -1,45 +1,14 @@
 name: Deploy Dictionary
 on:
-  push:
-    branches: [master]
-    paths:
-      - 'build.clj'
-      - 'deps.edn'
-      - 'tools/dictionary/**'
-      - 'resources/dictionary/**'
-      - '.github/workflows/deploy-dictionary.yml'
+  workflow_call:
 
 jobs:
-  integration:
-    uses: ./.github/workflows/integration.yml
-
   deployment:
     name: Build Dictionary Import
     runs-on: ubuntu-latest
     environment: deployment
-    needs: integration
     steps:
       - uses: actions/checkout@v6.0.2
-
-      - name: Detect dictionary data changes
-        id: dictionary-changes
-        run: |
-          set -euo pipefail
-          before="${{ github.event.before }}"
-          if [[ -z "$before" || "$before" == "0000000000000000000000000000000000000000" ]]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if git cat-file -e "$before^{commit}" 2>/dev/null; then
-            if git diff --name-only "$before" "${{ github.sha }}" | grep -q "^resources/dictionary/"; then
-              echo "changed=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "changed=false" >> "$GITHUB_OUTPUT"
-            fi
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
 
       - uses: actions/setup-java@v5.2.0
         with:
@@ -69,7 +38,7 @@ jobs:
             ~/.deps.clj
           key: clojure-${{ hashFiles('deps.edn') }}
 
-      - name: Ensure dictionary directories
+      - name: Ensure dictionary directories and ownership
         uses: appleboy/ssh-action@v1.2.4
         with:
           host: ${{ secrets.HOST }}
@@ -78,6 +47,8 @@ jobs:
           script: |
             set -euo pipefail
             sudo mkdir -p /opt/learning-app/dictionary /var/lib/learning-app/dictionary
+            sudo chown webapp:webapp /var/lib/learning-app/dictionary
+            sudo chmod 750 /var/lib/learning-app/dictionary
 
       - name: Upload dictionary import jar
         uses: appleboy/scp-action@v1.0.0
@@ -101,18 +72,7 @@ jobs:
           target: '/opt/learning-app/dictionary/'
           overwrite: true
 
-      - name: Make import script executable
-        uses: appleboy/ssh-action@v1.2.4
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USER }}
-          key: ${{ secrets.KEY }}
-          script: |
-            set -euo pipefail
-            sudo chmod +x /opt/learning-app/dictionary/import.sh
-
       - name: Upload dictionary data
-        if: steps.dictionary-changes.outputs.changed == 'true'
         uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.HOST }}
@@ -122,3 +82,29 @@ jobs:
           source: 'resources/dictionary/*'
           target: '/var/lib/learning-app/dictionary/'
           overwrite: true
+
+      - name: Run dictionary import service and smoke checks
+        uses: appleboy/ssh-action@v1.2.4
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.KEY }}
+          script: |
+            set -euo pipefail
+            sudo chmod +x /opt/learning-app/dictionary/import.sh
+            sudo chown webapp:webapp /var/lib/learning-app/dictionary
+            sudo chmod 750 /var/lib/learning-app/dictionary
+
+            if ! sudo systemctl cat learning-app-dictionary-import.service >/dev/null 2>&1; then
+              echo "ERROR: learning-app-dictionary-import.service is missing. Deploy infra first." >&2
+              exit 1
+            fi
+
+            sudo systemctl daemon-reload
+            sudo systemctl start learning-app-dictionary-import.service
+
+            curl -sf http://127.0.0.1:5984/dictionary-db/dictionary-meta >/dev/null
+            curl -sf --resolve sprecha.de:443:127.0.0.1 \
+              https://sprecha.de/db/dictionary-db/dictionary-meta >/dev/null
+
+            test -f /var/lib/learning-app/dictionary/import-metrics.json
