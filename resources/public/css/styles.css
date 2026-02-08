@@ -2429,6 +2429,7 @@ Home Page
 .autocomplete {
     flex: 1;
     position: relative;
+    width: 100%;
 }
 
 .suggestions {
