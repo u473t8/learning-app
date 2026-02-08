@@ -1,6 +1,5 @@
 (ns application
   (:require
-   [db :as db]
    [dbs :as dbs]
    [dictionary :as dictionary]
    [dictionary-sync :as dictionary-sync]
@@ -42,7 +41,6 @@
      [:link {:rel "stylesheet" :href "/css/styles.css"}]
      [:script {:src "/js/htmx/htmx.min.js" :defer true}]
      [:script {:src "/js/word-autocomplete.js" :defer true}]
-     [:script {:src "/js/sw-bridge.js" :defer true}]
      head]
     [:body
      [:a.app-logo
@@ -56,8 +54,7 @@
      [:div#loader.loader
       [:div.loader__list {:style {:--items-count 1}}
        [:div.loader__text "Загружаем..."]]]
-     [:div#app body]
-     [:div#sw-update-veil.sw-update-veil "Обновляем\u2026"]]]))
+     [:div#app body]]]))
 
 
 ;;
@@ -96,21 +93,12 @@
             ctx)})
 
 
-(def app-update-interceptor
-  "Injects SW update pending flag into request."
-  {:name  ::sw-update-interceptor
-   :enter (fn [ctx]
-            (p/let [pending-doc (db/get (dbs/device-db) "sw-update-pending")]
-              (assoc-in ctx [:request :sw/update-pending?] (:pending pending-doc))))})
-
-
 (def ui-routes
   [[""
     ["/home"
-     {:get (fn [{:keys [user-db sw/update-pending?]}]
+     {:get (fn [{:keys [user-db]}]
              (p/let [word-count (vocabulary/count user-db)]
-               {:html/body (views.home/home {:word-count      word-count
-                                             :update-pending? update-pending?})}))}]
+               {:html/body (views.home/home {:word-count word-count})}))}]
 
     ["/dictionary-entries"
      {:get (fn [{:keys [dictionary-db params]}]
@@ -251,7 +239,6 @@
 
     {:data {:interceptors [db-interceptor
                            dictionary-sync-interceptor
-                           app-update-interceptor
                            (parameters/parameters-interceptor)
                            (keyword-parameters/keyword-parameters-interceptor)
                            (hiccup/interceptor {:layout-fn nil})
