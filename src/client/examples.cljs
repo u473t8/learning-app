@@ -70,25 +70,25 @@
 (defn create-fetch-task!
   "Creates a task to fetch an example for the given word-id."
   [word-id]
-  (tasks/create-task! "example-fetch" word-id))
+  (tasks/create-task! "example-fetch" {:word-id word-id}))
 
 
 (defmethod tasks/execute-task "example-fetch"
-  [{:keys [word-id]} db]
-  (p/let [word-doc (db/get db word-id)]
-    (if-not word-doc
-      (do
-        (log/warn :example-fetch/word-not-found {:word-id word-id})
-        true) ; Word deleted, consider task done
-
-      (p/catch
-        (p/let [example (fetch-one (:value word-doc))]
-          (save-example! db word-id (:value word-doc) example)
+  [{:keys [data]} {:keys [user-db device-db]}]
+  (let [{:keys [word-id]} data]
+    (p/let [word-doc (db/get user-db word-id)]
+      (if-not word-doc
+        (do
+          (log/warn :example-fetch/word-not-found {:word-id word-id})
+          ;; Word deleted, consider task done
           true)
 
-        (fn [err]
-          (log/warn :example-fetch/failed {:word-id word-id :error (ex-message err)})
-          false)))))
+        (p/catch
+          (p/let [example (fetch-one (:value word-doc))]
+            (save-example! device-db word-id (:value word-doc) example)
+            true)
 
-
-; Return false to trigger retry
+          (fn [err]
+            (log/warn :example-fetch/failed {:word-id word-id :error (ex-message err)})
+            ;; Return false to trigger retry
+            false))))))

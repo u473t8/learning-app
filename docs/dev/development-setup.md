@@ -43,6 +43,19 @@ CouchDB will hash the password on first start.
 
 > **Note:** The password `3434` matches the default in `src/shared/db.cljc`. For production, use a strong password.
 
+#### Dictionary Database Setup
+
+After CouchDB is running, create the `dictionary-db` database and configure it for public read access:
+
+```bash
+curl -X PUT http://admin:3434@localhost:5984/dictionary-db
+curl -X PUT http://admin:3434@localhost:5984/dictionary-db/_security \
+  -H "Content-Type: application/json" \
+  -d '{"admins":{"names":["admin"],"roles":[]},"members":{"names":[],"roles":[]}}'
+```
+
+This matches the production configuration: anyone can read, only the admin can write.
+
 ## Setup Steps
 
 ### 1. Install npm dependencies
@@ -72,6 +85,18 @@ curl http://localhost:5984/
 ```
 
 CouchDB web interface (Fauxton) is available at: http://localhost:5984/_utils/
+
+### 3.5 Generate + import dictionary (before running the server)
+
+Do this after CouchDB is up and before starting the backend:
+
+```bash
+clj -M:dictionary
+clj -T:build dictionary-import
+COUCHDB_URL=http://localhost:5984 COUCHDB_PASS=3434 java -jar target/dictionary-import.jar --input-dir resources/dictionary
+```
+
+Add `--reset` only if you need to replace an existing `dictionary-db`.
 
 ### 4. Start shadow-cljs (ClojureScript compiler)
 

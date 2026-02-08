@@ -1,11 +1,17 @@
 #!/usr/bin/bash
 
-export BORG_REPO=ssh://storagebox/./borg-repository
+: "${BORG_REPO:=ssh://storagebox/./borg-repository}"
+export BORG_REPO
 
-export BORG_PASSPHRASE=$(cat $BORG_PASSPHRASE_PATH)
+if [ -z "${BORG_PASSPHRASE_PATH:-}" ] || [ ! -f "${BORG_PASSPHRASE_PATH}" ]; then
+    echo "ERROR: BORG_PASSPHRASE_PATH is missing" >&2
+    exit 1
+fi
 
-### Remove current env when db moved to the STATE_DIRECTORY location
-export LEARNING_APP_DB_PATH=/opt/learning-app/app.db
+export BORG_PASSPHRASE=$(cat "${BORG_PASSPHRASE_PATH}")
+
+: "${LEARNING_APP_DB_PATH:=/var/lib/learning-app/db.sqlite}"
+export LEARNING_APP_DB_PATH
 
 
 # some helpers and error handling:

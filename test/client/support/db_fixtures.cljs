@@ -59,6 +59,23 @@
                    (p/finally done))))})
 
 
+(defn db-fixture-multi
+  [db-names]
+  {:before (fn []
+             (async done
+               (-> (p/all (map destroy-test-db db-names))
+                   (p/finally done))))
+   :after  (fn []
+             (async done
+               (-> (p/all (map destroy-test-db db-names))
+                   (p/finally done))))})
+
+
 (defn with-test-db
   [db-name f]
   (f (db/use db-name)))
+
+
+(defn with-test-dbs
+  [db-names f]
+  (f (mapv db/use db-names)))

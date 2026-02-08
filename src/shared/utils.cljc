@@ -38,11 +38,11 @@
 
 
 (defn sanitize-text
-  "Remove extra spaces"
+  "Remove punctuation and normalize whitespace"
   [text]
   (-> text
       (or "")
-      ;; (str/replace #"\p{Punct}" " ")
+      (str/replace #"[!\"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~]" " ")
       (str/trim)
       (str/replace #"\s+" " ")))
 
@@ -69,6 +69,24 @@
   [string]
   (when-not (str/blank? string)
     string))
+
+
+(defn kebab->snake
+  "Convert a keyword name from kebab-case to snake_case string."
+  [k]
+  (str/replace (name k) #"-" "_"))
+
+
+(defn transform-keys
+  "Recursively transform map keys from kebab-case to snake_case."
+  [x]
+  (cond
+    (map? x)        (-> x
+                        (update-keys kebab->snake)
+                        (update-vals transform-keys))
+    (sequential? x) (mapv transform-keys x)
+    (keyword? x)    (name x)
+    :else           x))
 
 
 ;; =============================================================================

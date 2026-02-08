@@ -1,0 +1,110 @@
+name: Deploy Dictionary
+on:
+  workflow_call:
+
+jobs:
+  deployment:
+    name: Build Dictionary Import
+    runs-on: ubuntu-latest
+    environment: deployment
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: actions/setup-java@v5.2.0
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: DeLaGuardo/setup-clojure@13.5.2
+        with:
+          cli: latest
+
+      - uses: actions/cache/restore@v5.0.2
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.gitlibs
+            ~/.deps.clj
+          key: clojure-${{ hashFiles('deps.edn') }}
+
+      - run: clojure -T:build dictionary-import
+
+      - uses: actions/cache/save@v5.0.2
+        if: always()
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.gitlibs
+            ~/.deps.clj
+          key: clojure-${{ hashFiles('deps.edn') }}
+
+      - name: Ensure dictionary directories and ownership
+        uses: appleboy/ssh-action@v1.2.4
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.KEY }}
+          script: |
+            set -euo pipefail
+            sudo mkdir -p /opt/learning-app/dictionary /var/lib/learning-app/dictionary
+            sudo chown webapp:webapp /var/lib/learning-app/dictionary
+            sudo chmod 750 /var/lib/learning-app/dictionary
+
+      - name: Upload dictionary import jar
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.KEY }}
+          strip_components: 1
+          source: 'target/dictionary-import.jar'
+          target: '/opt/learning-app/dictionary/'
+          overwrite: true
+
+      - name: Upload dictionary import script
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.KEY }}
+          strip_components: 2
+          source: 'tools/dictionary/import.sh'
+          target: '/opt/learning-app/dictionary/'
+          overwrite: true
+
+      - name: Upload dictionary data
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.KEY }}
+          strip_components: 2
+          source: 'resources/dictionary/*'
+          target: '/var/lib/learning-app/dictionary/'
+          overwrite: true
+
+      - name: Run dictionary import service and smoke checks
+        uses: appleboy/ssh-action@v1.2.4
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.KEY }}
+          script: |
+            set -euo pipefail
+            sudo chmod +x /opt/learning-app/dictionary/import.sh
+            sudo chown webapp:webapp /var/lib/learning-app/dictionary
+            sudo chmod 750 /var/lib/learning-app/dictionary
+
+            if ! sudo systemctl cat learning-app-dictionary-import.service >/dev/null 2>&1; then
+              echo "ERROR: learning-app-dictionary-import.service is missing. Deploy infra first." >&2
+              exit 1
+            fi
+
+            sudo systemctl daemon-reload
+            sudo systemctl start learning-app-dictionary-import.service
+
+            curl -sf http://127.0.0.1:5984/dictionary-db/dictionary-meta >/dev/null
+            curl -sf --resolve sprecha.de:443:127.0.0.1 \
+              https://sprecha.de/db/dictionary-db/dictionary-meta >/dev/null
+
+            test -f /var/lib/learning-app/dictionary/import-metrics.json

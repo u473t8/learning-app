@@ -2,6 +2,7 @@
   "Simple task runner: scans DB for tasks, runs them in parallel, pauses when offline."
   (:require
    [db :as db]
+   [dbs :as dbs]
    [lambdaisland.glogi :as log]
    [promesa.core :as p]
    [utils :as utils]))
@@ -13,10 +14,8 @@
 
 
 (def ^:private config
-  {:db-name          "local-db"
-   :max-backoff-ms   60000
-   :max-concurrent   3
-   :poll-interval-ms (if js/goog.DEBUG 5000 30000)})
+  {:max-backoff-ms 60000
+   :max-concurrent 3})
 
 
 ;; =============================================================================
@@ -26,10 +25,10 @@
 
 (defn create-task
   "Create a task document."
-  [task-type word-id now-iso]
+  [task-type data now-iso]
   {:type       "task"
    :task-type  task-type
-   :word-id    word-id
+   :data       data
    :attempts   0
    :run-at     now-iso
    :created-at now-iso})
@@ -44,18 +43,18 @@
   "Execute a task. Dispatches on :task-type.
 
    Arguments:
-     task - the task document (map with :task-type, :word-id, etc.)
-     db   - the PouchDB database instance
+     task - the task document (map with :task-type, :data, etc.)
+     dbs  - map with :device-db and :user-db PouchDB instances
 
    Returns a promise that resolves to:
      - truthy  -> task succeeded, will be removed
      - falsy   -> task failed, will be retried with exponential backoff
      - ::unknown-task -> unknown task type, will be dead-lettered"
-  :task-type)
+  (fn [task _dbs] (:task-type task)))
 
 
 (defmethod execute-task :default
-  [task _db]
+  [task _dbs]
   (log/warn :tasks/unknown-type {:task-type (:task-type task)})
   ::unknown-task)
 
@@ -145,27 +144,29 @@
 
 
 (defn- run-task!
-  [db task]
-  (p/catch
-    (p/let [result (execute-task task db)]
-      (cond
-        (= result ::unknown-task) (do
-                                    (log/warn :tasks/dead-letter {:id (:_id task) :reason :unknown-task})
-                                    (dead-letter! db task "unknown-task-type"))
+  [dbs task]
+  (let [device-db (:device-db dbs)]
+    (p/catch
+      (p/let [result (execute-task task dbs)]
+        (cond
+          (= result ::unknown-task)
+          (do
+            (log/warn :tasks/dead-letter {:id (:_id task) :reason :unknown-task})
+            (dead-letter! device-db task "unknown-task-type"))
 
-        result
-        (do
-          (log/debug :tasks/completed {:id (:_id task)})
-          (remove-with-latest-rev! db task))
+          result
+          (do
+            (log/debug :tasks/completed {:id (:_id task)})
+            (remove-with-latest-rev! device-db task))
 
-        :else
-        (do
-          (log/debug :tasks/failed {:id (:_id task)})
-          (mark-failed! db task))))
+          :else
+          (do
+            (log/debug :tasks/failed {:id (:_id task)})
+            (mark-failed! device-db task))))
 
-    (fn [err]
-      (log/error :tasks/error {:id (:_id task) :error (str err)})
-      (mark-failed! db task))))
+      (fn [err]
+        (log/error :tasks/error {:id (:_id task) :error (str err)})
+        (mark-failed! device-db task)))))
 
 
 (defn- take-next-task!
@@ -182,52 +183,70 @@
 
 
 (defn- run-worker!
-  [db queue]
+  [dbs queue]
   (p/loop []
     (let [task (take-next-task! queue)]
       (when task
         (p/do
-          (run-task! db task)
+          (run-task! dbs task)
           (p/recur))))))
 
 
 (defn- run-workers!
-  [db tasks]
+  [dbs tasks]
   (let [queue (atom (vec tasks))]
     (p/all
-     (repeatedly (:max-concurrent config) #(run-worker! db queue)))))
+     (repeatedly (:max-concurrent config) #(run-worker! dbs queue)))))
 
 
 (def ^:private state (atom {}))
 
 
+(declare flush!)
+
+
+(defn- schedule-retry!
+  "Schedule a delayed flush after a failed task."
+  [delay-ms]
+  (js/setTimeout flush! delay-ms))
+
+
+(defn- nearest-retry-delay
+  "Returns ms until the earliest run-at among remaining tasks, or nil."
+  [db]
+  (p/let [{:keys [docs]}
+          (db/find db
+                   {:selector  {:type       "task"
+                                :run-at     {:$exists true}
+                                :created-at {:$exists true}
+                                :$or        [{:status {:$exists false}}
+                                             {:status {:$ne "failed"}}]}
+                    :sort      [{:type :asc}
+                                {:run-at :asc}
+                                {:created-at :asc}]
+                    :limit     1
+                    :use-index "by-type-run-at-created-at"})]
+    (when-let [task (first docs)]
+      (max 0 (- (utils/iso->ms (:run-at task)) (utils/now-ms))))))
+
+
 (defn- run-cycle!
-  [db]
-  (p/loop []
-    (when (and (online?) (:enabled? @state))
-      (p/let [tasks (fetch-due-tasks db (utils/now-iso))]
-        (log/debug :run-cycle/tasks tasks)
-        (when (seq tasks)
-          (p/do
-            (run-workers! db tasks)
-            (p/recur)))))))
-
-
-(defn- start-polling!
-  [db]
-  (let [poll (fn poll []
-               (log/debug :poll/state @state)
-               (when (:enabled? @state)
-                 (swap! state assoc :polling? true)
-                 (if (online?)
-                   (-> (run-cycle! db)
-                       (p/catch #(log/error :tasks/poll-error {:error (str %)}))
-                       (p/finally #(js/setTimeout poll (:poll-interval-ms config))))
-                   ;; Offline: don't schedule next poll, let online listener resume
-                   (do
-                     (swap! state :polling? assoc false)
-                     (log/debug :tasks/paused-offline {})))))]
-    (poll)))
+  [dbs]
+  (let [device-db (:device-db dbs)]
+    (p/do
+      (p/loop []
+        (when (and (online?) (:enabled? @state))
+          (p/let [tasks (fetch-due-tasks device-db (utils/now-iso))]
+            (log/debug :run-cycle/tasks tasks)
+            (when (seq tasks)
+              (p/do
+                (run-workers! dbs tasks)
+                (p/recur))))))
+      ;; After processing, check if any tasks remain for retry
+      (p/let [delay (nearest-retry-delay device-db)]
+        (when delay
+          (log/debug :tasks/scheduling-retry {:delay-ms delay})
+          (schedule-retry! delay))))))
 
 
 ;; =============================================================================
@@ -235,17 +254,31 @@
 ;; =============================================================================
 
 
-(defn start!
-  "Start the task runner. Returns a stop function."
+(defn flush!
+  "Trigger a run cycle if enabled and online. Fire-and-forget: the promise
+   chain is a self-contained side effect (with its own error handling),
+   so callers never block on task execution."
   []
-  (let [db (db/use (:db-name config))
-        start-polling! #(start-polling! db)]
+  (when-let [{:keys [dbs enabled? running?]} @state]
+    (when (and (some? dbs) enabled? (online?) (not running?))
+      (swap! state assoc :running? true)
+      (-> (run-cycle! dbs)
+          (p/catch #(log/error :tasks/flush-error {:error (str %)}))
+          (p/finally #(swap! state assoc :running? false)))))
+  nil)
 
-    (reset! state {:enabled? true :start-polling! start-polling!})
+
+(defn start!
+  "Start the task runner."
+  []
+  (let [dbs {:device-db (dbs/device-db)
+             :user-db   (dbs/user-db)}]
+    (reset! state {:enabled? true :dbs dbs})
 
     (log/info :tasks/starting config)
-    (ensure-task-index! db)
-    (start-polling!)))
+    (p/do
+      (ensure-task-index! (:device-db dbs))
+      (flush!))))
 
 
 (defn stop!
@@ -256,14 +289,14 @@
 
 (defn resume!
   []
-  (when-let [{:keys [start-polling! enabled? polling?]} @state]
-    (when (and (online?) enabled? polling?)
-      (log/debug :tasks/resuming {})
-      (start-polling!))))
+  (log/debug :tasks/resuming {})
+  (flush!))
 
 
 (defn create-task!
-  [task-type word-id]
-  (let [db      (db/use (:db-name config))
+  [task-type data]
+  (let [db      (dbs/device-db)
         now-iso (utils/now-iso)]
-    (db/insert db (create-task task-type word-id now-iso))))
+    (p/do
+      (db/insert db (create-task task-type data now-iso))
+      (flush!))))
