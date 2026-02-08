@@ -19,6 +19,7 @@ jobs:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USER }}
           key: ${{ secrets.KEY }}
+          strip_components: 1
           source: 'target/learning-app-infra.deb'
           target: '/tmp/'
           overwrite: true
@@ -35,5 +36,9 @@ jobs:
               echo "ERROR: CI user must have passwordless sudo for deployment commands" >&2
               exit 1
             fi
-            sudo -n dpkg -i /tmp/learning-app-infra.deb || sudo -n apt-get -f install -y
+            if ! sudo -n dpkg -i /tmp/learning-app-infra.deb; then
+              sudo -n apt-get -f install -y
+              sudo -n dpkg -i /tmp/learning-app-infra.deb
+            fi
+            sudo -n systemctl daemon-reload
             sudo -n systemctl restart learning-app-run.service
