@@ -27,6 +27,7 @@
   (when-let [result (domain/last-result state)]
     {:variant        (if (:correct? result) :success :error)
      :correct-answer (domain/expected-answer state)
+     :user-answer    (:answer result)
      :finished?      (domain/finished? state)}))
 
 

@@ -184,6 +184,20 @@
            (is (= 2 (count reviews)))))))))
 
 
+(deftest check-answer-clamps-very-long-input
+  (async-testing "`check-answer!` limits oversized answers"
+    (with-test-dbs
+     (fn [user-db device-db]
+       (let [long-answer (apply str (repeat 1400 "x"))]
+         (p/do
+           (db-seed/seed-vocabulary! user-db [{:_id "word-1" :value "der Hund" :translation "пёс"}])
+           (p/let [_ (sut/start! user-db device-db {:trial-selector :first})
+                   result (sut/check-answer! user-db device-db long-answer)
+                   answer (-> result :lesson-state domain/last-result :answer)]
+             (is (= 1000 (count answer)))
+             (is (= (subs long-answer 0 1000) answer)))))))))
+
+
 (deftest check-answer-example-trial-no-review
   (async-testing "`check-answer!` skips review for example trials"
     (with-test-dbs

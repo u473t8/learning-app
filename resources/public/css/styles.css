@@ -1113,6 +1113,11 @@ Home Page
     line-height: 22px;
 }
 
+.learning-session__footer--error .challenge-answer {
+    max-width: 100%;
+    min-width: 0;
+}
+
 .challenge-answer__header {
     margin: 0;
 }
@@ -1120,6 +1125,11 @@ Home Page
 .challenge-answer__body {
     font-size: 15px;
     font-weight: 500 !important;
+}
+
+.learning-session__footer--error .challenge-answer__body {
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .challenge-success {

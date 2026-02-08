@@ -14,6 +14,18 @@
   (db/get device-db domain/lesson-id))
 
 
+(def max-answer-length
+  1000)
+
+
+(defn- clamp-answer
+  [answer]
+  (let [answer (or answer "")]
+    (if (> (count answer) max-answer-length)
+      (subs answer 0 max-answer-length)
+      answer)))
+
+
 (defn start!
   "Start a new lesson. Fetches words and examples, creates and persists lesson state.
    Returns {:lesson-state ...} or {:error ...}"
@@ -53,7 +65,8 @@
    Returns {:result {:correct? :correct-answer :is-finished?} :lesson-state ...}
    On error returns {:error :keyword :lesson-state ...}"
   [user-db device-db answer]
-  (p/let [current-state (state device-db)]
+  (p/let [current-state (state device-db)
+          answer        (clamp-answer answer)]
     (if-not current-state
       (do
         (log/warn :lesson/check-answer-missing {:answer answer})
