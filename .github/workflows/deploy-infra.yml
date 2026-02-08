@@ -31,5 +31,9 @@ jobs:
           key: ${{ secrets.KEY }}
           script: |
             set -euo pipefail
-            sudo DEBIAN_FRONTEND=noninteractive dpkg -i /tmp/learning-app-infra.deb || sudo DEBIAN_FRONTEND=noninteractive apt-get -f install -y
-            sudo systemctl restart learning-app-run.service
+            if ! sudo -n systemctl --version >/dev/null 2>&1; then
+              echo "ERROR: CI user must have passwordless sudo for deployment commands" >&2
+              exit 1
+            fi
+            sudo -n dpkg -i /tmp/learning-app-infra.deb || sudo -n apt-get -f install -y
+            sudo -n systemctl restart learning-app-run.service

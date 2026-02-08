@@ -132,10 +132,14 @@ jobs:
           key: ${{ secrets.KEY }}
           script: |
             set -euo pipefail
+            if ! sudo -n systemctl --version >/dev/null 2>&1; then
+              echo "ERROR: CI user must have passwordless sudo for deployment commands" >&2
+              exit 1
+            fi
             for i in $(seq 1 30); do
-              if sudo systemctl is-active --quiet couchdb.service \
-                 && sudo systemctl cat learning-app-dictionary-import.service >/dev/null 2>&1 \
-                 && sudo nginx -t >/dev/null 2>&1 \
+              if sudo -n systemctl is-active --quiet couchdb.service \
+                 && sudo -n systemctl cat learning-app-dictionary-import.service >/dev/null 2>&1 \
+                 && sudo -n nginx -t >/dev/null 2>&1 \
                  && curl -sf http://127.0.0.1:5984/ >/dev/null; then
                 exit 0
               fi
@@ -143,9 +147,9 @@ jobs:
             done
 
             echo "ERROR: Infra readiness check failed" >&2
-            sudo systemctl status couchdb.service --no-pager || true
-            sudo systemctl cat learning-app-dictionary-import.service || true
-            sudo nginx -t || true
+            sudo -n systemctl status couchdb.service --no-pager || true
+            sudo -n systemctl cat learning-app-dictionary-import.service || true
+            sudo -n nginx -t || true
             exit 1
 
   deploy-app:

@@ -5,12 +5,33 @@ warn() {
     echo "WARN: $*" >&2
 }
 
+ensure_deployer_ci_sudo() {
+    local sudoers_file tmp
+    sudoers_file="/etc/sudoers.d/learning-app-deployer-ci"
+    tmp="$(mktemp)"
+
+    install -d -m 750 /etc/sudoers.d
+    cat > "${tmp}" <<'EOF'
+deployer ALL=(root) NOPASSWD: /usr/bin/dpkg, /usr/bin/apt-get, /usr/bin/systemctl, /usr/sbin/nginx, /usr/bin/mkdir, /usr/bin/chown, /usr/bin/chmod
+EOF
+
+    if command -v visudo >/dev/null 2>&1; then
+        visudo -cf "${tmp}" >/dev/null
+    fi
+
+    install -o root -g root -m 440 "${tmp}" "${sudoers_file}"
+    rm -f "${tmp}"
+}
+
 CRED_DIR="/etc/credstore.encrypted"
 mkdir -p "${CRED_DIR}"
 chmod 700 "${CRED_DIR}"
 
 # Create users
 systemd-sysusers
+
+# Ensure CI deploy user can run required privileged commands non-interactively.
+ensure_deployer_ci_sudo
 
 # Create directories
 systemd-tmpfiles --create
