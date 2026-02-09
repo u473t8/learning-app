@@ -3,22 +3,21 @@
 Goal: get a production server to a running state with the shortest, sequential steps possible.
 All steps are idempotent unless marked NON-IDEMPOTENT.
 
-## CI-run steps (infra updates + deploy)
+## CI and deploy entrypoints
 
-Merge to `master` triggers `.github/workflows/deploy-master.yml`.
-The workflow enforces this order:
-- Deploy infra first when `infra/production/**` changes.
-- Deploy app and dictionary only after infra readiness checks pass.
-- Run app and dictionary deploy in parallel.
-- If infra changed, app and dictionary deploy are forced even when their own paths are unchanged.
+Testing is automatic. Deployment is manual.
 
-Manual dispatch supports granular deploy targets:
-- `force_deploy=true` deploys infra + app + dictionary.
-- `deploy_infra=true` deploys infra only.
-- `deploy_app=true` deploys app only.
-- `deploy_dictionary=true` deploys dictionary only.
-- Multiple targets can be combined in one run.
-- If no target is selected and `force_deploy` is false, the workflow fails fast.
+- Pull requests to `master` run `.github/workflows/integration.yml`.
+- Pushes to `master` also run `.github/workflows/integration.yml` for post-merge visibility.
+- Production deploys are manual via workflow dispatch:
+  - `.github/workflows/deploy-infra.yml`
+  - `.github/workflows/deploy-app.yml`
+  - `.github/workflows/deploy-dictionary.yml`
+
+Recommended manual order when infra changed:
+1. Run deploy infra.
+2. Run deploy app.
+3. Run deploy dictionary.
 
 1) Install or upgrade the infra package (idempotent).
 ```sh
@@ -40,7 +39,7 @@ The import validates input checksums and writes `/var/lib/learning-app/dictionar
 
 ## Infra deploy failed: manual recovery
 
-If infra deployment fails in GitHub Actions, `deploy-master` stops before app/dictionary deploy. This is expected and safe.
+If infra deployment fails in GitHub Actions, fix infra first and then rerun manual deploy workflows in order (infra -> app -> dictionary).
 
 CI prerequisite: deploy SSH user must have passwordless sudo for deploy commands (`dpkg`, `apt-get`, `systemctl`, `nginx`).
 
@@ -66,8 +65,7 @@ sudo systemctl cat learning-app-dictionary-import.service
 
 3) Re-run deployment.
 ```sh
-# option A: re-run failed jobs in the same GitHub Actions run
-# option B: merge/push a new commit to master
+# dispatch deploy-infra, then deploy-app, then deploy-dictionary
 ```
 
 4) Verify after recovery.

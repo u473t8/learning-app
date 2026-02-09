@@ -1,6 +1,6 @@
 name: Deploy Dictionary
 on:
-  workflow_call:
+  workflow_dispatch:
 
 jobs:
   deployment:
