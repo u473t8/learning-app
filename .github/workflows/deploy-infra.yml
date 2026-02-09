@@ -1,6 +1,6 @@
 name: Deploy Infrastructure
 on:
-  workflow_call:
+  workflow_dispatch:
 
 jobs:
   deployment:
