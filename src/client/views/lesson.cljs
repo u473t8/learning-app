@@ -6,7 +6,7 @@
 
 (defn progress
   [value attrs]
-  [:div#lesson-progress.progress-bar-value
+  [:div#lesson-progress.lesson__progress-value
    (merge
     {:style {:--__internal__progress-bar-value (str value "%")}}
     attrs)])
@@ -14,8 +14,8 @@
 
 (defn- header
   [{:keys [progress-value]}]
-  [:header.learning-session__header
-   [:button.cancel-button
+  [:header.lesson__header
+   [:button.lesson__cancel
     {:id          "lesson-cancel"
      :hx-delete   "/lesson"
      :hx-push-url "true"
@@ -25,7 +25,7 @@
      [:path
       {:fill "currentColor"
        :d    "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"}]]]
-   [:div.progress-bar
+   [:div.lesson__progress
     (progress progress-value {})]])
 
 
@@ -35,18 +35,18 @@
   (let [instruction (if is-example?
                       "Переведите предложение на немецкий"
                       "Переведите слово на немецкий")]
-    [:div#lesson-challenge.learning-session__challenge attrs
-     [:p.text-plate {:lang "ru"} prompt]
-     [:p {:style {:font-size "14px" :color "gray"}} instruction]]))
+    [:div#lesson-challenge.lesson__challenge attrs
+     [:p.lesson__prompt {:lang "ru"} prompt]
+     [:p.lesson__instruction instruction]]))
 
 
 (defn input
   []
   [:div#lesson-footer
    {:hx-on:htmx:afterSettle "var input = htmx.find('#lesson-answer'); if(input){input.focus();}"}
-   [:form.learning-session__footer.learning-session__footer--input
+   [:form.lesson__footer.lesson__footer--input
     {:hx-post "/lesson/answer" :hx-target "#lesson-footer" :hx-swap "outerHTML"}
-    [:textarea.text-input
+    [:textarea.lesson__input
      {:id "lesson-answer"
       :name "answer"
       :placeholder "Введите перевод..."
@@ -55,7 +55,7 @@
       :lang "de"
       :hx-on:keydown
       "if(event.key==='Enter' && (event.ctrlKey || event.metaKey)){event.preventDefault(); this.form.requestSubmit();}"}]
-    [:div.learning-session__action
+    [:div.lesson__action
      [:button.big-button {:type "submit"} "ПРОВЕРИТЬ"]]]])
 
 
@@ -67,15 +67,15 @@
     "var btn = this.querySelector('#lesson-next') || this.querySelector('#lesson-finish'); if(btn){btn.focus();}"
     :hx-on:keydown
     "if(event.key==='Enter' || event.key===' ' || event.code==='Space'){event.preventDefault(); this.querySelector('form').requestSubmit();}"}
-   [:div.learning-session__footer.learning-session__footer--success
-    [:div.challenge-answer
-     [:p.challenge-answer__header "Правильно!"]
-     [:p.challenge-answer__body {:lang "de"} correct-answer]]
+   [:div.lesson__footer.lesson__footer--success
+    [:div.lesson__answer
+     [:p.lesson__answer-header "Правильно!"]
+     [:p.lesson__answer-body {:lang "de"} correct-answer]]
     [:form
      (if finished?
        {:hx-delete "/lesson" :hx-target "#app" :hx-swap "innerHTML"}
        {:hx-post "/lesson/next" :hx-target "#lesson-footer" :hx-swap "outerHTML"})
-     [:div.learning-session__action
+     [:div.lesson__action
       [:button.big-button
        {:id (if finished? "lesson-finish" "lesson-next") :type "submit" :autofocus true}
        (if finished? "ЗАКОНЧИТЬ" "ДАЛЕЕ")]]]]])
@@ -88,14 +88,14 @@
     :hx-on:htmx:afterSettle "var btn = this.querySelector('#lesson-next'); if(btn){btn.focus();}"
     :hx-on:keydown
     "if(event.key==='Enter' || event.key===' ' || event.code==='Space'){event.preventDefault(); this.querySelector('form').requestSubmit();}"}
-   [:div.learning-session__footer.learning-session__footer--error
-    [:div.challenge-answer
-     [:p.challenge-answer__header "Ваш ответ:"]
-     [:p.challenge-answer__body {:lang "de"} (or user-answer "")]
-     [:p.challenge-answer__header "Правильный ответ:"]
-     [:p.challenge-answer__body {:lang "de"} correct-answer]]
+   [:div.lesson__footer.lesson__footer--error
+    [:div.lesson__answer
+     [:p.lesson__answer-header "Ваш ответ:"]
+     [:p.lesson__answer-body {:lang "de"} (or user-answer "")]
+     [:p.lesson__answer-header "Правильный ответ:"]
+     [:p.lesson__answer-body {:lang "de"} correct-answer]]
     [:form {:hx-post "/lesson/next" :hx-target "#lesson-footer" :hx-swap "outerHTML"}
-     [:div.learning-session__action
+     [:div.lesson__action
       [:button.big-button
        {:id "lesson-next" :type "submit" :autofocus true}
        "ДАЛЕЕ"]]]]])
@@ -111,6 +111,18 @@
       nil)))
 
 
+(defn empty-state
+  []
+  [:div.lesson
+   [:div.lesson__empty
+    [:div.lesson__empty-state
+     [:p.lesson__empty-state-text "Нет слов для урока"]
+     [:p.lesson__empty-state-hint "Добавьте слова, чтобы начать обучение"]
+     [:button.lesson__empty-state-cta
+      {:hx-get "/words" :hx-push-url "true" :hx-target "#app" :hx-swap "innerHTML"}
+      "Добавить слова"]]]])
+
+
 (defn page
   "Render the lesson page. Takes lesson state, uses presenter for props."
   [state]
@@ -118,21 +130,9 @@
          progress-value  :progress
          footer-props    :footer}
         (presenter.lesson/page-props state)]
-    [:div.learning-session
+    [:div.lesson
      (header {:progress-value progress-value})
-     [:main.learning-session__body
+     [:main.lesson__body
       (challenge challenge-props)]
      (or (footer footer-props)
          (input))]))
-
-
-(defn empty-state
-  []
-  [:div.learning-session
-   [:div.learning-session__empty
-    [:div.empty-state
-     [:p.empty-state__text "Нет слов для урока"]
-     [:p.empty-state__hint "Добавьте слова, чтобы начать обучение"]
-     [:button.empty-state__cta
-      {:hx-get "/words" :hx-push-url "true" :hx-target "#app" :hx-swap "innerHTML"}
-      "Добавить слова"]]]])

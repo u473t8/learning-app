@@ -1,0 +1,143 @@
+.vocabulary {
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
+  max-width: 600px;
+  min-height: 100dvh;
+  padding-bottom: calc(80px + env(safe-area-inset-bottom));
+  padding-top: 56px;
+  width: 100%;
+}
+
+.vocabulary__state {
+  display: none;
+}
+
+.vocabulary__header {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+}
+
+.vocabulary__back {
+  align-items: center;
+  background: none;
+  border: none;
+  color: rgb(var(--color-macaw));
+  display: inline-flex;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  gap: 4px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 8px 12px 8px 0;
+}
+
+.vocabulary__title {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.vocabulary__search {
+  padding: 0 16px 16px;
+}
+
+.vocabulary__list {
+  border-top: 1px solid rgb(0 0 0 / 0.08);
+  flex: 1;
+}
+
+.vocabulary__empty-state {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vocabulary__empty-state-text {
+  color: rgb(var(--color-eel));
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.vocabulary__empty-state-hint {
+  color: rgb(var(--color-wolf));
+  font-size: 14px;
+  margin: 0 0 16px;
+}
+
+.vocabulary__empty-state-cta {
+  background: rgb(var(--color-macaw));
+  border: none;
+  border-radius: 12px;
+  color: white;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  height: 48px;
+  padding: 0 24px;
+}
+
+.vocabulary__footer {
+  background: rgb(var(--color-polar));
+  bottom: 0;
+  box-shadow: 0 -2px 12px rgb(0 0 0 / 0.08);
+  display: flex;
+  justify-content: center;
+  left: 0;
+  padding: 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  position: fixed;
+  right: 0;
+  z-index: 10;
+}
+
+.vocabulary__start {
+  display: block;
+  width: 100%;
+}
+
+.vocabulary__start.big-button {
+  width: 100%;
+}
+
+.vocabulary:has(.vocabulary__state--empty) .vocabulary__search,
+.vocabulary:has(.vocabulary__state--empty) .vocabulary__footer {
+  display: none;
+}
+
+.vocabulary:has(.vocabulary__state--empty) .vocabulary__list {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+}
+
+.vocabulary:has(.vocabulary__state--empty) .vocabulary__list > * {
+  width: 100%;
+}
+
+@media (min-width: 700px) {
+  .vocabulary__start {
+    max-width: 320px;
+  }
+}
+
+@media (max-width: 699px) {
+  .vocabulary__footer {
+    justify-content: stretch;
+  }
+
+  .vocabulary__start {
+    max-width: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .vocabulary__start {
+    width: 100%;
+  }
+}

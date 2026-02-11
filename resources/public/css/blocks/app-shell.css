@@ -1,0 +1,62 @@
+.app-shell__loader {
+  align-items: center;
+  background-color: rgb(var(--color-snow));
+  color: rgb(var(--color-owl));
+  display: flex;
+  font-family: Nunito, sans-serif;
+  font-size: 24;
+  font-weight: 700;
+  inset: 0;
+  justify-content: center;
+  opacity: 0;
+  position: fixed;
+  z-index: -1;
+}
+
+.app-shell__loader-list {
+  align-items: center;
+  animation: 10s steps(var(--items-count)) 0s infinite normal app-shell-loader-slide;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  position: absolute;
+  top: calc(50% - 50vh);
+  width: 100%;
+}
+
+@keyframes app-shell-loader-slide {
+  100% {
+    top: calc(50% - 50vh - calc(var(--items-count) * 100vh));
+  }
+}
+
+.app-shell__loader-text {
+  align-items: center;
+  display: flex;
+  height: 100vh;
+  justify-content: center;
+  line-height: 1.5;
+  text-align: center;
+  text-wrap: balance;
+  width: 100%;
+}
+
+.app-shell__loader.htmx-request.htmx-indicator {
+  opacity: 0.94;
+  z-index: 1;
+}
+
+.app-shell__logo {
+  align-items: center;
+  color: rgb(var(--color-black-text));
+  display: inline-flex;
+  font-family: Nunito, sans-serif;
+  font-size: 18px;
+  font-weight: 800;
+  left: 16px;
+  position: fixed;
+  text-decoration: none;
+  top: 16px;
+  z-index: 20;
+}
