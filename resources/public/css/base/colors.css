@@ -1,0 +1,19 @@
+:root {
+  --color-snow: 255, 255, 255;
+  --color-snow-always-light: 255, 255, 255;
+  --color-polar: 247, 247, 247;
+  --color-swan: 229, 229, 229;
+  --color-hare: 175, 175, 175;
+  --color-wolf: 119, 119, 119;
+  --color-eel: 75, 75, 75;
+  --color-black-text: 60, 60, 60;
+  --color-gray-text: 153, 153, 153;
+  --color-cardinal: 255, 75, 75;
+  --color-fire-ant: 234, 43, 43;
+  --color-sea-sponge: 215, 255, 184;
+  --color-owl: 88, 204, 2;
+  --color-tree-frog: 88, 167, 0;
+  --color-macaw: 28, 176, 246;
+  --color-whale: 24, 153, 214;
+  --color-walking-fish: 255, 223, 224;
+}

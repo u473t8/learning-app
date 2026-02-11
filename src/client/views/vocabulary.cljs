@@ -80,8 +80,8 @@
          {:style {:background-color (utils/prozent->color retention-level)}
           :title (str (retention-text retention-level) " (" (int retention-level) "%)")}]
         [:span.word-item__value {:lang "de"} value]
-        [:span.word-item__arrow "→"]
-        [:span.word-item__translation {:lang "ru"} translation]])]))
+        [:span.word-item__translation {:lang "ru"} translation]
+        [:span.word-item__arrow.word-item__chevron "→"]])]))
 
 
 (defn word-list
@@ -101,15 +101,14 @@
          "Загрузить ещё ↓"]))
      ;; Empty state
      [:li.word-list__empty
-      {:id "word-list-empty"}
       (if (utils/non-blank search)
-        [:div.empty-state
-         [:p.empty-state__text "Ничего не найдено"]
-         [:p.empty-state__hint "Попробуйте другой запрос"]]
-        [:div.empty-state
-         [:p.empty-state__text "Слов пока нет"]
-         [:p.empty-state__hint "Добавьте первое слово на главной странице"]
-         [:button.empty-state__cta
+        [:div.vocabulary__empty-state
+         [:p.vocabulary__empty-state-text "Ничего не найдено"]
+         [:p.vocabulary__empty-state-hint "Попробуйте другой запрос"]]
+        [:div.vocabulary__empty-state
+         [:p.vocabulary__empty-state-text "Слов пока нет"]
+         [:p.vocabulary__empty-state-hint "Добавьте первое слово на главной странице"]
+         [:button.vocabulary__empty-state-cta
           {:hx-get "/home" :hx-push-url "true" :hx-swap "innerHTML" :hx-target "#app"}
           "Добавить слово"]])])])
 
@@ -154,29 +153,37 @@
        :value        ""}])))
 
 
-(defn words-page
+(defn- state-marker
+  [empty?]
+  [:span#vocabulary-state.vocabulary__state
+   {:class  (if empty? "vocabulary__state--empty" "vocabulary__state--ready")
+    :hidden true}])
+
+
+(defn page
   "Words page. When empty? is true, shows empty state without header/search/footer."
   [& {:keys [empty?]}]
   (if empty?
-    [:div.words-page
-     [:div.words-page__list
+    [:div.vocabulary
+     (state-marker true)
+     [:div.vocabulary__list
       [:ul.word-list
        {:id "word-list"}
        [:li.word-list__empty
-        {:id "word-list-empty"}
-        [:div.empty-state
-         [:p.empty-state__text "Слов пока нет"]
-         [:p.empty-state__hint "Добавьте первое слово на главной странице"]
-         [:button.empty-state__cta
+        [:div.vocabulary__empty-state
+         [:p.vocabulary__empty-state-text "Слов пока нет"]
+         [:p.vocabulary__empty-state-hint "Добавьте первое слово на главной странице"]
+         [:button.vocabulary__empty-state-cta
           {:hx-get "/home" :hx-push-url "true" :hx-swap "innerHTML" :hx-target "#app"}
           "Добавить слово"]]]]]]
-    [:div.words-page
-     [:header.words-page__header
-      [:button.words-page__back
+    [:div.vocabulary
+     (state-marker false)
+     [:header.vocabulary__header
+      [:button.vocabulary__back
        {:hx-get "/home" :hx-push-url "true" :hx-swap "innerHTML" :hx-target "#app"}
        "← Назад"]
-      [:h1.words-page__title "Мои слова"]]
-     [:form.words-page__search
+      [:h1.vocabulary__title "Мои слова"]]
+     [:form.vocabulary__search
       [:div.input
        [:span.input__search-icon]
        [:input.input__input-area.input__input-area--icon
@@ -187,15 +194,15 @@
          :hx-swap      "innerHTML"
          :hx-trigger   "input changed delay:500ms, keyup[key=='Enter']"
          :name         "search"}]]]
-     [:div.words-page__list
+     [:div.vocabulary__list
       {:hx-get     "/words"
-       :hx-trigger "load, words-changed"
+       :hx-trigger "load"
        :hx-target  "#word-list"
        :hx-swap    "outerHTML"}
       [:ul.word-list
        {:id "word-list"}]]
-     [:footer.words-page__footer
-      [:button.words-page__start.big-button.green-button
+     [:footer.vocabulary__footer
+      [:button.vocabulary__start.big-button.green-button
        {:hx-get       "/lesson"
         :hx-indicator "#loader"
         :hx-push-url  "true"

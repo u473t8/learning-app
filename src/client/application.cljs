@@ -25,7 +25,7 @@
 ;;
 
 
-(defn- page-layout
+(defn- app-shell
   [{:html/keys [head body]}]
   (list
    [:!DOCTYPE "html"]
@@ -43,17 +43,16 @@
      [:script {:src "/js/word-autocomplete.js" :defer true}]
      head]
     [:body
-     [:a.app-logo
+     [:a.app-shell__logo
       {:href        "/home"
        :hx-get      "/home"
        :hx-push-url "true"
        :hx-swap     "innerHTML"
-       :hx-target   "#app"
-       :aria-label  "Sprecha"}
+       :hx-target   "#app"}
       "Sprecha"]
-     [:div#loader.loader
-      [:div.loader__list {:style {:--items-count 1}}
-       [:div.loader__text "Загружаем..."]]]
+     [:div#loader.app-shell__loader
+      [:div.app-shell__loader-list {:style {:--items-count 1}}
+       [:div.app-shell__loader-text "Загружаем..."]]]
      [:div#app body]]]))
 
 
@@ -70,7 +69,7 @@
               (if (or (-> request :headers (get "hx-request"))
                       (nil? (:html/body response)))
                 ctx
-                (assoc-in ctx [:response :html/layout] page-layout))))})
+                (assoc-in ctx [:response :html/layout] app-shell))))})
 
 
 (def db-interceptor
@@ -98,7 +97,7 @@
     ["/home"
      {:get (fn [{:keys [user-db]}]
              (p/let [word-count (vocabulary/count user-db)]
-               {:html/body (views.home/home {:word-count word-count})}))}]
+               {:html/body (views.home/page {:word-count word-count})}))}]
 
     ["/dictionary-entries"
      {:get (fn [{:keys [dictionary-db params]}]
@@ -131,7 +130,7 @@
                                   :search     search
                                   :show-more? (> total limit)
                                   :words      words})
-                                (views.word/words-page {:empty? (zero? total)}))
+                                (views.word/page {:empty? (zero? total)}))
                    :status    200})))
 
       :post (fn [{:keys [user-db params]}]
@@ -140,16 +139,11 @@
                 (if-let [error (:error result)]
                   {:html/body (views.word/validation-error-inputs error)
                    :status    400}
-                  (p/let [word-id (vocabulary/add! user-db value translation)]
+                  (p/let [word-id (vocabulary/add! user-db value translation)
+                          total   (vocabulary/count user-db)]
                     (examples/create-fetch-task! word-id)
-                    {:status 201}))))}]
-
-    ["/words-count"
-     {:get (fn [{:keys [user-db]}]
-             (p/let [total (vocabulary/count user-db)
-                     class (if (zero? total) "word-count--empty" "word-count--ready")]
-               {:html/body [:span#word-count {:class class} (str total)]
-                :status    200}))}]
+                    {:html/body (views.home/state-marker total {:hx-swap-oob "outerHTML"})
+                     :status    201}))))}]
 
     ["/words/:id"
      {:get    (fn [{:keys [user-db path-params params]}]
@@ -181,7 +175,7 @@
                     (p/let [total (vocabulary/count user-db)]
                       (if (zero? total)
                         {:headers   {"HX-Retarget" "#app" "HX-Reswap" "innerHTML"}
-                         :html/body (views.word/words-page {:empty? true})
+                         :html/body (views.word/page {:empty? true})
                          :status    200}
                         {:status 200})))))}]
 
@@ -202,7 +196,7 @@
                 (p/let [_ (lesson/finish! device-db)
                         word-count (vocabulary/count user-db)]
                   {:headers   {"HX-Push-Url" "/home"}
-                   :html/body (views.home/home {:word-count word-count})
+                   :html/body (views.home/page {:word-count word-count})
                    :status    200}))}]
 
     ["/lesson/answer"

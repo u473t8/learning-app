@@ -1,0 +1,5 @@
+:root {
+  --viewport-height: 100dvh;
+  --web-ui_button-border-radius: 16px;
+  --web-ui_button-transition-lip: 120ms ease;
+}
