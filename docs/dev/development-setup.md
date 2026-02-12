@@ -217,3 +217,7 @@ These errors appear when CouchDB is not running. Start CouchDB with `brew servic
 
 ### "no such table: sessions" error
 Run the database initialization: `sqlite3 app.db < initial-setup.sql`
+
+## Related Guides
+
+- Mobile PWA testing on a real phone via cloudflared: `docs/dev/mobile-pwa-testing.md`
