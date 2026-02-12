@@ -95,9 +95,8 @@
 (def ui-routes
   [[""
     ["/home"
-     {:get (fn [{:keys [user-db]}]
-             (p/let [word-count (vocabulary/count user-db)]
-               {:html/body (views.home/page {:word-count word-count})}))}]
+     {:get (fn [_]
+             {:html/body (views.home/page)})}]
 
     ["/dictionary-entries"
      {:get (fn [{:keys [dictionary-db params]}]
@@ -139,11 +138,9 @@
                 (if-let [error (:error result)]
                   {:html/body (views.word/validation-error-inputs error)
                    :status    400}
-                  (p/let [word-id (vocabulary/add! user-db value translation)
-                          total   (vocabulary/count user-db)]
+                  (p/let [word-id (vocabulary/add! user-db value translation)]
                     (examples/create-fetch-task! word-id)
-                    {:html/body (views.home/state-marker total {:hx-swap-oob "outerHTML"})
-                     :status    201}))))}]
+                    {:status 201}))))}]
 
     ["/words/:id"
      {:get    (fn [{:keys [user-db path-params params]}]
@@ -192,11 +189,10 @@
                     :else
                     (throw (ex-info "Failed to create lesson" {:error error})))))
 
-      :delete (fn [{:keys [user-db device-db]}]
-                (p/let [_ (lesson/finish! device-db)
-                        word-count (vocabulary/count user-db)]
+      :delete (fn [{:keys [device-db]}]
+                (p/let [_ (lesson/finish! device-db)]
                   {:headers   {"HX-Push-Url" "/home"}
-                   :html/body (views.home/page {:word-count word-count})
+                   :html/body (views.home/page)
                    :status    200}))}]
 
     ["/lesson/answer"

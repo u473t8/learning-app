@@ -2,23 +2,9 @@
   "Home page view.")
 
 
-(defn state-marker
-  ([word-count]
-   (state-marker word-count {}))
-  ([word-count attrs]
-   [:span#home-state.home__state
-    (merge
-     {:class  (if (zero? word-count) "home__state--empty" "home__state--ready")
-      :hidden true}
-     attrs)
-    (str word-count)]))
-
-
 (defn page
-  [{:keys [word-count] :or {word-count 0}}]
+  [& _]
   [:div.home
-   (state-marker word-count)
-
    [:header.home__hero
     [:div.home__hero-text
      [:p.home__subtitle
@@ -43,7 +29,7 @@
         "Список слов"]]
       [:form.new-word-form.new-word-form--quick
        {:hx-on:htmx:after-request
-        "if(event.detail.successful && event.detail.elt===this) {this.reset(); htmx.find('#new-word-value').focus();}"
+        "if(event.detail.successful && event.detail.elt===this) {this.reset();}"
         :hx-post         "/words"
         :hx-push-url     "false"
         :hx-swap         "none"
@@ -64,12 +50,12 @@
             :hx-include     "this"
             :hx-sync        "this:replace"
             :hx-target      "next [data-ac-role='list']"
-            :hx-trigger     "input changed delay:200ms"
+            :hx-trigger     "input changed delay:300ms"
             :hx-swap        "innerHTML"
             :required       true
             :lang           "de"
             :placeholder    "Новое слово"}]
-          [:ul.suggestions.home__suggestions
+          [:ul.suggestions
            {:data-ac-role "list"}]]
          [:span.new-word-form__arrow
           "→"]

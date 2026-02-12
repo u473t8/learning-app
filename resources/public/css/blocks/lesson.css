@@ -168,14 +168,16 @@ body:has(.lesson) #app {
   background-color: rgb(var(--color-polar));
   border: 2px solid rgb(var(--color-swan));
   border-radius: 0.625rem;
+  box-sizing: border-box;
   color: rgb(var(--color-black-text));
   font-family: Nunito, sans-serif;
   font-size: 1.25rem;
   line-height: 1.5rem;
+  max-width: 600px;
   min-height: 87px;
   padding: 0.625rem 0.875rem;
   resize: none;
-  width: calc(100vw - 32px) !important;
+  width: 100% !important;
 }
 
 .lesson__input:focus-visible {
