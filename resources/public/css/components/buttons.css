@@ -77,3 +77,23 @@
 .big-button[disabled]::before {
   background-color: var(--__internal__background-color-disabled);
 }
+
+.big-button--request-stable {
+  transition: filter 0.2s;
+}
+
+.big-button--request-stable:active {
+  transform: none;
+}
+
+.big-button--request-stable:active::before {
+  box-shadow: 0 var(--__internal__lip-width) 0;
+}
+
+.big-button--request-stable[disabled] {
+  color: var(--__internal__color);
+}
+
+.big-button--request-stable[disabled]::before {
+  background-color: var(--__internal__background-color);
+}
