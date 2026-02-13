@@ -47,7 +47,6 @@
             :autocapitalize "off"
             :autocomplete   "off"
             :autocorrect    "off"
-            :autofocus      true
             :data-ac-role   "word"
             :hx-get         "/dictionary-entries"
             :hx-include     "this"

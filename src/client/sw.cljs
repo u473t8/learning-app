@@ -34,6 +34,7 @@
     "/css/blocks/word-item.css"
     "/css/blocks/vocabulary.css"
     "/js/word-autocomplete.js"
+    "/js/virtual-keyboard.js"
     "/js/sw-loader.js"
     "/fonts/Nunito/nunito-v26-cyrillic_latin-regular.woff2"
     "/fonts/Nunito/nunito-v26-cyrillic_latin-500.woff2"

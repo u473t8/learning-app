@@ -41,6 +41,7 @@
      [:link {:rel "stylesheet" :href "/css/styles.css"}]
      [:script {:src "/js/htmx/htmx.min.js" :defer true}]
      [:script {:src "/js/word-autocomplete.js" :defer true}]
+     [:script {:src "/js/virtual-keyboard.js" :defer true}]
      head]
     [:body
      [:a.app-shell__logo

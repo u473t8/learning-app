@@ -4,8 +4,28 @@
   gap: 18px;
   margin: 0 auto;
   max-width: 980px;
-  min-height: 100dvh;
-  padding: 64px 16px calc(96px + env(safe-area-inset-bottom));
+  min-height: 100vh;
+  /*
+   * Prefer a stable viewport height.
+   * In Chromium PWA, `dvh` can drift slightly after a keyboard open/close cycle,
+   * which makes centered content "jump" on refresh. `svh` stays consistent.
+   */
+  min-height: 100svh;
+  padding: 64px 16px 0;
+  /* fallback */
+  padding-bottom: calc(
+      96px +
+      env(safe-area-inset-bottom)
+  );
+  /* when supported: reserve either footer or keyboard space */
+  padding-bottom: max(
+    calc(
+        96px +
+        env(safe-area-inset-bottom)
+    ),
+    env(keyboard-inset-height, 0px)
+  );
+  transition: padding-bottom 180ms ease;
   width: 100%;
 }
 
@@ -38,7 +58,10 @@
   justify-content: center;
   left: 0;
   padding: 16px;
-  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  padding-bottom: calc(
+      16px +
+      env(safe-area-inset-bottom)
+  );
   position: fixed;
   right: 0;
   z-index: 0;
@@ -46,17 +69,6 @@
 
 .home__footer .home__lesson-button.big-button {
   width: 100%;
-}
-
-.home__lesson-button.big-button {
-  --web-ui_button-background-color: rgb(var(--color-owl));
-  --web-ui_button-border-color: rgb(var(--color-tree-frog));
-  --web-ui_button-color: rgb(var(--color-snow));
-  --web-ui_button-lip-width: 2px;
-  font-size: 13px;
-  font-weight: 700;
-  height: 44px;
-  min-width: 140px;
 }
 
 .home__add {
