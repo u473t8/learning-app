@@ -5,54 +5,52 @@
 
 
 (defn progress
-  [value attrs]
-  [:div#lesson-progress.lesson__progress-value
-   (merge
-    {:style {:--__internal__progress-bar-value (str value "%")}}
-    attrs)])
-
-
-(defn- header
-  [{:keys [progress-value]}]
-  [:header.lesson__header
-   [:button.lesson__cancel
-    {:id          "lesson-cancel"
-     :hx-delete   "/lesson"
-     :hx-push-url "true"
-     :hx-target   "#app"
-     :hx-swap     "innerHTML"}
-    [:svg {:viewBox "0 0 24 24" :width "18" :height "18"}
-     [:path
-      {:fill "currentColor"
-       :d    "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"}]]]
-   [:div.lesson__progress
-    (progress progress-value {})]])
+  [state attrs]
+  (let [value (presenter.lesson/progress-props state)]
+    [:div#lesson-progress.lesson__progress-shell
+     attrs
+     [:div.lesson__progress
+      {:role           "progressbar"
+       :aria-label     "Прогресс урока"
+       :aria-valuemin  0
+       :aria-valuemax  100
+       :aria-valuenow  value
+       :aria-valuetext (str value "%")}
+      [:div#lesson-progress-bar.lesson__progress-value
+       {:style {:width (str value "%")}}]]]))
 
 
 (defn challenge
   "Renders a challenge - prompt text and instruction."
-  [{:keys [prompt is-example?]} & {:as attrs}]
-  (let [instruction (if is-example?
-                      "Переведите предложение на немецкий"
-                      "Переведите слово на немецкий")]
-    [:div#lesson-challenge.lesson__challenge attrs
-     [:p.lesson__prompt {:lang "ru"} prompt]
-     [:p.lesson__instruction instruction]]))
+  [state & {:as attrs}]
+  (let [{:keys [prompt is-example?]} (presenter.lesson/challenge-props state)]
+    [:div#lesson-challenge.lesson__challenge
+     attrs
+     [:h2.lesson__prompt
+      {:lang "ru"}
+      prompt]
+     [:p.lesson__instruction
+      (if is-example?
+        "Переведите предложение на немецкий"
+        "Переведите слово на немецкий")]]))
 
 
 (defn input
   []
-  [:div#lesson-footer
-   {:hx-on:htmx:afterSettle "var input = htmx.find('#lesson-answer'); if(input){input.focus();}"}
+  [:footer#lesson-footer
+   ;; User focuses input manually (avoids auto keyboard open/layout jumps).
    [:form.lesson__footer.lesson__footer--input
     {:hx-post "/lesson/answer" :hx-target "#lesson-footer" :hx-swap "outerHTML"}
+    [:label.lesson__input-label
+     {:for "lesson-answer"}
+     "Ответ на немецком"]
     [:textarea.lesson__input
-     {:id "lesson-answer"
-      :name "answer"
+     {:id          "lesson-answer"
+      :name        "answer"
+      :rows        4
       :placeholder "Введите перевод..."
-      :maxlength 1000
-      :autofocus true
-      :lang "de"
+      :maxlength   1000
+      :lang        "de"
       :hx-on:keydown
       "if(event.key==='Enter' && (event.ctrlKey || event.metaKey)){event.preventDefault(); this.form.requestSubmit();}"}]
     [:div.lesson__action
@@ -61,15 +59,14 @@
 
 (defn- success
   [{:keys [correct-answer finished?]}]
-  [:div#lesson-footer
+  [:footer#lesson-footer
    {:tabindex "-1"
     :hx-on:htmx:afterSettle
     "var btn = this.querySelector('#lesson-next') || this.querySelector('#lesson-finish'); if(btn){btn.focus();}"
-    :hx-on:keydown
-    "if(event.key==='Enter' || event.key===' ' || event.code==='Space'){event.preventDefault(); this.querySelector('form').requestSubmit();}"}
+   }
    [:div.lesson__footer.lesson__footer--success
     [:div.lesson__answer
-     [:p.lesson__answer-header "Правильно!"]
+     [:h3.lesson__answer-header "Правильно!"]
      [:p.lesson__answer-body {:lang "de"} correct-answer]]
     [:form
      (if finished?
@@ -77,34 +74,32 @@
        {:hx-post "/lesson/next" :hx-target "#lesson-footer" :hx-swap "outerHTML"})
      [:div.lesson__action
       [:button.big-button
-       {:id (if finished? "lesson-finish" "lesson-next") :type "submit" :autofocus true}
+       {:id (if finished? "lesson-finish" "lesson-next") :type "submit"}
        (if finished? "ЗАКОНЧИТЬ" "ДАЛЕЕ")]]]]])
 
 
 (defn- error
   [{:keys [correct-answer user-answer]}]
-  [:div#lesson-footer
+  [:footer#lesson-footer
    {:tabindex "-1"
-    :hx-on:htmx:afterSettle "var btn = this.querySelector('#lesson-next'); if(btn){btn.focus();}"
-    :hx-on:keydown
-    "if(event.key==='Enter' || event.key===' ' || event.code==='Space'){event.preventDefault(); this.querySelector('form').requestSubmit();}"}
+    :hx-on:htmx:afterSettle "var btn = this.querySelector('#lesson-next'); if(btn){btn.focus();}"}
    [:div.lesson__footer.lesson__footer--error
     [:div.lesson__answer
-     [:p.lesson__answer-header "Ваш ответ:"]
+     [:h3.lesson__answer-header "Ваш ответ:"]
      [:p.lesson__answer-body {:lang "de"} (or user-answer "")]
-     [:p.lesson__answer-header "Правильный ответ:"]
+     [:h3.lesson__answer-header "Правильный ответ:"]
      [:p.lesson__answer-body {:lang "de"} correct-answer]]
     [:form {:hx-post "/lesson/next" :hx-target "#lesson-footer" :hx-swap "outerHTML"}
      [:div.lesson__action
       [:button.big-button
-       {:id "lesson-next" :type "submit" :autofocus true}
+       {:id "lesson-next" :type "submit"}
        "ДАЛЕЕ"]]]]])
 
 
 (defn footer
   "Renders footer based on props. Returns nil if no props (show input instead)."
-  [props]
-  (when props
+  [state]
+  (when-let [props (presenter.lesson/footer-props state)]
     (case (:variant props)
       :success (success props)
       :error   (error props)
@@ -114,25 +109,48 @@
 (defn empty-state
   []
   [:div.lesson
-   [:div.lesson__empty
-    [:div.lesson__empty-state
-     [:p.lesson__empty-state-text "Нет слов для урока"]
-     [:p.lesson__empty-state-hint "Добавьте слова, чтобы начать обучение"]
-     [:button.lesson__empty-state-cta
-      {:hx-get "/words" :hx-push-url "true" :hx-target "#app" :hx-swap "innerHTML"}
-      "Добавить слова"]]]])
+   [:h1.lesson__title
+    "Урок"]
+   [:main.lesson__body
+    [:div.lesson__empty
+     [:div.lesson__empty-state
+      [:p.lesson__empty-state-text "Нет слов для урока"]
+      [:p.lesson__empty-state-hint "Добавьте слова, чтобы начать обучение"]
+      [:button.lesson__empty-state-cta
+       {:type        "button"
+        :hx-get      "/words"
+        :hx-push-url "true"
+        :hx-target   "#app"
+        :hx-swap     "innerHTML"}
+       "Добавить слова"]]]]])
 
 
 (defn page
   "Render the lesson page. Takes lesson state, uses presenter for props."
   [state]
-  (let [{challenge-props :challenge
-         progress-value  :progress
-         footer-props    :footer}
-        (presenter.lesson/page-props state)]
-    [:div.lesson
-     (header {:progress-value progress-value})
-     [:main.lesson__body
-      (challenge challenge-props)]
-     (or (footer footer-props)
-         (input))]))
+  [:div.lesson
+   [:h1.lesson__title
+    "Урок"]
+   [:header.lesson__header
+    (progress state {})
+    [:button.lesson__cancel
+     {:id          "lesson-cancel"
+      :type        "button"
+      :aria-label  "Закрыть урок"
+      :hx-delete   "/lesson"
+      :hx-push-url "true"
+      :hx-target   "#app"
+      :hx-swap     "innerHTML"}
+     [:svg
+      {:viewBox "0 0 24 24"
+       :height  "18"
+       :width   "18"}
+      [:path
+       {:fill "currentColor"
+        :d "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"}]]]
+   ]
+   [:main.lesson__body
+    (challenge state)]
+   (or
+    (footer state)
+    (input))])

@@ -5,11 +5,12 @@
     if (!navigator.virtualKeyboard) return;
 
     function updateOverlayMode() {
-        // Only enable overlay behavior on the home page.
-        var onHome = !!document.querySelector(".home");
+        // Enable overlay behavior on screens where we use `env(keyboard-inset-*)`.
+        // This keeps layout stable and lets CSS lift UI above the keyboard.
+        var managed = !!document.querySelector(".home") || !!document.querySelector(".lesson");
 
         try {
-            navigator.virtualKeyboard.overlaysContent = onHome;
+            navigator.virtualKeyboard.overlaysContent = managed;
         } catch (_err) {
             // Ignore failures (unsupported, non-secure context, etc.).
         }

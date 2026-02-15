@@ -7,7 +7,6 @@
    [examples :as examples]
    [hiccup :as hiccup]
    [lesson :as lesson]
-   [presenter.lesson :as presenter.lesson]
    [promesa.core :as p]
    [reitit.http :as http]
    [reitit.http.interceptors.keyword-parameters :as keyword-parameters]
@@ -201,25 +200,22 @@
               (let [answer (:answer params)]
                 (p/let [{:keys [lesson-state]} (lesson/check-answer! user-db device-db answer)]
                   (if lesson-state
-                    (let [{:keys [challenge progress footer]} (presenter.lesson/page-props lesson-state)]
-                      {:html/body (list
-                                   (views.lesson/footer footer)
-                                   (views.lesson/challenge challenge {:hx-swap-oob "true"})
-                                   (views.lesson/progress progress {:hx-swap-oob "true"}))
-                       :status    200})
+                    {:html/body (list
+                                 (views.lesson/footer lesson-state)
+                                 (views.lesson/challenge lesson-state {:hx-swap-oob "true"})
+                                 (views.lesson/progress lesson-state {:hx-swap-oob "innerHTML"}))
+                     :status    200}
                     {:status 404}))))}]
 
     ["/lesson/next"
      {:post (fn [{:keys [device-db]}]
               (p/let [{:keys [lesson-state]} (lesson/advance! device-db)]
                 (if lesson-state
-                  (let [{:keys [challenge progress]}
-                        (presenter.lesson/page-props lesson-state)]
-                    {:html/body (list
-                                 (views.lesson/input)
-                                 (views.lesson/challenge challenge {:hx-swap-oob "true"})
-                                 (views.lesson/progress progress {:hx-swap-oob "true"}))
-                     :status    200})
+                  {:html/body (list
+                               (views.lesson/input)
+                               (views.lesson/challenge lesson-state {:hx-swap-oob "true"})
+                               (views.lesson/progress lesson-state {:hx-swap-oob "innerHTML"}))
+                   :status    200}
                   {:status 404})))}]]])
 
 

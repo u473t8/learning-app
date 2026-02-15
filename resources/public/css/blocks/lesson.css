@@ -15,9 +15,9 @@ body:has(.lesson) #app {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  height: 100dvh;
+  height: 100svh;
   left: 0;
-  min-height: 100dvh;
+  min-height: 100svh;
   overflow: hidden;
   padding-top: 56px;
   position: absolute;
@@ -28,10 +28,11 @@ body:has(.lesson) #app {
 .lesson__header {
   align-items: center;
   display: flex;
-  gap: 24px;
+  gap: 12px;
   margin: 0 auto;
-  max-width: 1080px;
-  padding: 24px;
+  max-width: 600px;
+  padding: 16px;
+  padding-top: 0px;
   width: 100%;
 }
 
@@ -48,6 +49,21 @@ body:has(.lesson) #app {
   width: 44px;
 }
 
+/* Structural headings/labels are present for accessibility, hidden visually. */
+.lesson__title,
+.lesson__input-label {
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
 @media (hover: hover) {
   .lesson__cancel:hover {
     filter: var(--web-ui_button-filter-hover, brightness(1.1));
@@ -56,27 +72,30 @@ body:has(.lesson) #app {
 
 .lesson__progress {
   --__internal__progress-bar-height: 16px;
-  --__internal__progress-bar-inner-value: 0%;
   --web-ui_progress-bar-color: rgb(var(--color-owl));
   --web-ui_progress-bar-shine-height: 3px;
   background: var(--web-ui_progress-bar-background, rgb(var(--color-swan)));
   border-radius: calc(var(--__internal__progress-bar-height) / 2);
-  flex: 1 1 auto;
   min-width: 0;
   position: relative;
+  width: 100%;
+}
+
+.lesson__progress-shell {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .lesson__progress-value {
   background: currentcolor;
   border-radius: inherit;
-  clip-path: inset(0 calc(100% - var(--__internal__progress-bar-value)) 0 0 round calc(var(--__internal__progress-bar-height) / 2));
   color: var(--web-ui_progress-bar-color, rgb(var(--color-owl)));
   height: var(--__internal__progress-bar-height);
-  min-width: calc(var(--__internal__progress-bar-height) * 1.5);
+  min-width: 0;
   position: relative;
-  transition-duration: 0.4s;
-  transition-property: background, color, opacity, clip-path, -webkit-clip-path;
-  width: 100%;
+  transition: width 0.4s ease;
+  width: 0%;
 }
 
 .lesson__progress-value::before {
@@ -88,9 +107,8 @@ body:has(.lesson) #app {
   opacity: 0.2;
   position: absolute;
   top: 25%;
-  transition-duration: 0.4s;
-  transition-property: width;
-  width: calc(var(--__internal__progress-bar-value) - var(--__internal__progress-bar-height) / 2);
+  transition: none;
+  width: calc(100% - var(--__internal__progress-bar-height) / 2);
 }
 
 .lesson__body {
@@ -103,6 +121,8 @@ body:has(.lesson) #app {
   height: auto;
   justify-content: center;
   min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 0 24px;
   text-align: center;
   width: 100%;
@@ -113,8 +133,8 @@ body:has(.lesson) #app {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  overflow-x: hidden;
-  overflow-y: auto;
+  min-height: 0;
+  overflow: visible;
 }
 
 .lesson__prompt {
@@ -143,15 +163,31 @@ body:has(.lesson) #app {
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
-  gap: 24px;
-  padding: 24px;
+  gap: 16px;
+  padding: 16px;
+  padding-bottom: calc(
+    16px +
+    env(safe-area-inset-bottom) +
+    env(keyboard-inset-height, 0px)
+  );
   position: relative;
   width: 100%;
+}
+
+.lesson__footer {
+  transition: padding-bottom 180ms ease;
+}
+
+.lesson__challenge {
+  transform: translateY(calc(-1 * clamp(0px, env(keyboard-inset-height, 0px), 12px)));
+  transition: transform 180ms ease;
 }
 
 .lesson__action {
   display: flex;
   justify-content: center;
+  margin-inline: auto;
+  width: 100%;
 }
 
 .lesson__action button {
@@ -160,8 +196,6 @@ body:has(.lesson) #app {
 
 .lesson__footer--input {
   align-items: center;
-  gap: 16px;
-  padding: 16px;
 }
 
 .lesson__input {
@@ -184,16 +218,8 @@ body:has(.lesson) #app {
   outline: none;
 }
 
-.lesson__footer--input .lesson__action {
-  max-width: 600px;
-  width: 100%;
-}
-
 .lesson__footer--input .lesson__input {
-  height: clamp(64px, 14vh, 120px);
-  max-height: 120px;
   max-width: 600px;
-  min-height: 64px;
   width: min(600px, 100%) !important;
 }
 
@@ -202,6 +228,9 @@ body:has(.lesson) #app {
   grid-auto-flow: row;
   grid-gap: 5px;
   line-height: 22px;
+  margin-inline: auto;
+  max-width: 600px;
+  width: 100%;
 }
 
 .lesson__answer-header {
@@ -228,8 +257,22 @@ body:has(.lesson) #app {
 }
 
 .lesson__footer--error .lesson__answer {
-  max-width: 100%;
   min-width: 0;
+}
+
+@media (min-width: 700px) {
+  .lesson__action {
+    max-width: 320px;
+  }
+
+  .lesson__footer {
+    gap: 24px;
+    padding: 24px;
+    padding-bottom: calc(
+        24px +
+        env(safe-area-inset-bottom)
+    );
+  }
 }
 
 .lesson__footer--error .lesson__answer-body {
@@ -290,7 +333,8 @@ body:has(.lesson) #app {
   }
 
   .lesson__header {
-    padding: 50px 40px 0;
+    gap: 16px;
+    padding: 50px 16px 0;
   }
 
   .lesson__body {
@@ -316,6 +360,14 @@ body:has(.lesson) #app {
     align-items: center;
     flex-direction: row;
     justify-content: space-around;
+  }
+
+  .lesson__footer {
+    padding-bottom: calc(
+      24px +
+      env(safe-area-inset-bottom) +
+      env(keyboard-inset-height, 0px)
+    );
   }
 
   .lesson__footer--input {
@@ -353,7 +405,6 @@ body:has(.lesson) #app {
   }
 
   .lesson__footer--input .lesson__input {
-    max-height: 18vh;
     min-height: 56px;
   }
 }
