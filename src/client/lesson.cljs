@@ -10,8 +10,8 @@
 
 
 (defn- state
-  [device-db]
-  (db/get device-db domain/lesson-id))
+  [dbs]
+  (db/get (:device/db dbs) domain/lesson-id))
 
 
 (def max-answer-length
@@ -26,22 +26,30 @@
       answer)))
 
 
+(defn- lesson-word
+  [{:keys [_id value translation]}]
+  {:id          _id
+   :value       value
+   :translation translation})
+
+
 (defn start!
   "Start a new lesson. Fetches words and examples, creates and persists lesson state.
-   Returns {:lesson-state ...} or {:error ...}"
-  ([user-db device-db]
-   (start! user-db device-db {}))
-  ([user-db device-db
+   Returns {:lesson-state ...} or {:error ...}."
+  ([dbs]
+   (start! dbs {}))
+  ([dbs
     {:keys [words-per-lesson trial-selector]
      :or   {words-per-lesson domain/default-words-per-lesson}}]
    (p/catch
-     (p/let [selected-words (vocabulary/list user-db {:order :asc :limit words-per-lesson})]
+     (p/let [{selected-words :words} (vocabulary/list dbs {:order :asc :limit words-per-lesson})]
        (if-not (seq selected-words)
          {:error :no-words-available}
-         (p/let [word-ids      (mapv :id selected-words)
-                 examples      (examples/list device-db word-ids)
-                 lesson-state  (domain/initial-state selected-words examples trial-selector (utils/now-iso))
-                 {:keys [rev]} (db/insert device-db lesson-state)]
+         (p/let [lesson-words  (mapv lesson-word selected-words)
+                 word-ids      (mapv :id lesson-words)
+                 examples      (examples/list dbs word-ids)
+                 lesson-state  (domain/initial-state lesson-words examples trial-selector (utils/now-iso))
+                 {:keys [rev]} (db/insert (:device/db dbs) lesson-state)]
            {:lesson-state (assoc lesson-state :_rev rev)})))
      (fn [err]
        (log/error :lesson/start-failed {:error (ex-message err)})
@@ -50,22 +58,21 @@
 
 (defn ensure!
   "Returns existing lesson or starts a new one.
-   Returns {:lesson-state ...} or {:error ...}"
-  ([user-db device-db]
-   (ensure! user-db device-db {}))
-  ([user-db device-db opts]
-   (p/let [existing (state device-db)]
+   Returns {:lesson-state ...} or {:error ...}."
+  ([dbs]
+   (ensure! dbs {}))
+  ([dbs opts]
+   (p/let [existing (state dbs)]
      (if existing
        {:lesson-state existing}
-       (start! user-db device-db opts)))))
+       (start! dbs opts)))))
 
 
 (defn check-answer!
   "Check the user's answer for the current trial.
-   Returns {:result {:correct? :correct-answer :is-finished?} :lesson-state ...}
-   On error returns {:error :keyword :lesson-state ...}"
-  [user-db device-db answer]
-  (p/let [current-state (state device-db)
+   Returns {:lesson-state ...}. On error returns {:error :keyword :lesson-state ...}."
+  [dbs answer]
+  (p/let [current-state (state dbs)
           answer        (clamp-answer answer)]
     (if-not current-state
       (do
@@ -78,11 +85,11 @@
           (p/do
             (when (domain/word-trial? current-trial)
               (vocabulary/add-review
-               user-db
+               dbs
                (:word-id current-trial)
                (-> lesson-state domain/last-result :correct?)
                (:prompt current-trial)))
-            (p/let [{:keys [rev]} (db/insert device-db lesson-state)]
+            (p/let [{:keys [rev]} (db/insert (:device/db dbs) lesson-state)]
               {:lesson-state (assoc lesson-state :_rev rev)}))
           (fn [err]
             (log/error :lesson/check-answer-save-failed {:error (ex-message err)})
@@ -91,17 +98,17 @@
 
 
 (defn advance!
-  "Select the next random trial from remaining trials.
-   Returns {:lesson-state ...} or {:error ...} or nil if no more trials."
-  [device-db]
-  (p/let [lesson-state (state device-db)]
+  "Select the next trial from remaining trials.
+   Returns {:lesson-state ...}, {:error ...}, or nil if finished."
+  [dbs]
+  (p/let [lesson-state (state dbs)]
     (if-not lesson-state
       (do
         (log/warn :advance-lesson/missing-state {})
         {:error :lesson-not-found})
       (when-let [next-state (domain/advance lesson-state)]
         (p/catch
-          (p/let [{:keys [rev]} (db/insert device-db next-state)]
+          (p/let [{:keys [rev]} (db/insert (:device/db dbs) next-state)]
             {:lesson-state (assoc next-state :_rev rev)})
           (fn [err]
             (log/error :advance-lesson/save-failed {:error (ex-message err)})
@@ -109,7 +116,7 @@
 
 
 (defn finish!
-  [device-db]
-  (p/let [existing (state device-db)]
+  [dbs]
+  (p/let [existing (state dbs)]
     (when existing
-      (db/remove device-db existing))))
+      (db/remove (:device/db dbs) existing))))
