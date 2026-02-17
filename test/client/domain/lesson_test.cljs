@@ -225,7 +225,7 @@
 (deftest check-answer-is-finished-when-no-remaining
   (testing "is-finished? true when all trials answered correctly"
     (let [state (sut/initial-state
-                 [{:id "w1" :value "der Hund" :translation "dog"}]
+                 [{:_id "w1" :value "der Hund" :translation [{:lang "en" :value "dog"}]}]
                  []
                  :first
                  "2024-08-20T10:00:00.000Z")
@@ -280,7 +280,7 @@
 (deftest advance-returns-nil-when-no-remaining
   (testing "advance returns nil when no trials remain"
     (let [state (sut/initial-state
-                 [{:id "w1" :value "der Hund" :translation "dog"}]
+                 [{:_id "w1" :value "der Hund" :translation [{:lang "en" :value "dog"}]}]
                  []
                  :first
                  "2024-08-20T10:00:00.000Z")

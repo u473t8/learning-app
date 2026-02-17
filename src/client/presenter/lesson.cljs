@@ -29,11 +29,3 @@
      :correct-answer (domain/expected-answer state)
      :user-answer    (:answer result)
      :finished?      (domain/finished? state)}))
-
-
-(defn page-props
-  "All props needed to render the lesson page."
-  [state]
-  {:challenge (challenge-props state)
-   :progress  (progress-props state)
-   :footer    (footer-props state)})

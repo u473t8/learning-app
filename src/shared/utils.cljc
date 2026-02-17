@@ -5,19 +5,19 @@
    [clojure.string :as str]))
 
 
+(def ^:private encode-url-params
+  #?(:clj  codec/form-encode
+     :cljs #(-> % clj->js js/URLSearchParams.)))
+
+
 (defn build-url
   [path query-params]
-  #?(:clj
-     (let [params (->> query-params
-                       (remove #(-> % val nil?))
-                       (into {}))]
-       (cond-> path
-         (seq params) (str "?" (codec/form-encode params))))
-
-     :cljs
-     (when (seq query-params)
-       (let [query-params (js/URLSearchParams. (clj->js query-params))]
-         (str path "?" query-params)))))
+  (let [params (->> query-params
+                    (remove #(-> % val nil?))
+                    (remove #(-> % val str/blank?))
+                    (into {}))]
+    (cond-> path
+      (seq params) (str "?" (encode-url-params params)))))
 
 
 (comment
@@ -63,6 +63,15 @@
   (let [word    (normalize-german word)
         pattern (normalize-german pattern)]
     (str/includes? word pattern)))
+
+
+(defn parse-int
+  ([s] (parse-int s nil))
+  ([s default]
+   #?(:clj  (try (Long/parseLong (str s))
+                  (catch Exception _ default))
+      :cljs (let [n (js/parseInt s)]
+              (if (js/isNaN n) default n)))))
 
 
 (defn non-blank
@@ -112,6 +121,10 @@
 ;; Time - Conversions (all use milliseconds as base unit)
 ;; =============================================================================
 
+(defn ms->secs
+  [ms]
+  (quot ms 1000))
+
 
 (defn ms->iso
   "Converts milliseconds to ISO-8601 string."
@@ -125,6 +138,12 @@
   [iso]
   #?(:clj (.toEpochMilli (java.time.Instant/parse iso))
      :cljs (js/Date.parse iso)))
+
+
+(defn iso->secs
+  "Converts ISO-8601 string to milliseconds."
+  [iso]
+  (-> iso iso->ms ms->secs))
 
 
 (defn date->ms

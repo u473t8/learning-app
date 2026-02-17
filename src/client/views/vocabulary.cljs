@@ -34,7 +34,6 @@
              :autocapitalize "off"
              :autocomplete   "off"
              :autocorrect    "off"
-             :autofocus      true
              :data-ac-role   "word"
              :hx-get         "/dictionary-entries"
              :hx-trigger     "input changed delay:200ms"
@@ -84,73 +83,93 @@
         [:span.word-item__arrow.word-item__chevron "→"]])]))
 
 
+(defn- word-items+sentinel
+  "Builds word items and optional infinite-scroll sentinel."
+  [{:keys [words-query show-more? words] :or { show-more? true}}]
+  (when (seq words)
+    (list
+     (for [word words]
+       (word-list-item word))
+     (when show-more?
+       [:li.word-list__sentinel
+        {:aria-hidden "true"
+         :hx-get      (utils/build-url
+                       "/words"
+                       (-> words-query
+                           (assoc :fragment "chunk")
+                           (update :offset + (:limit words-query))))
+         :hx-swap     "outerHTML"
+         :hx-target   "this"
+         :hx-trigger  "intersect once"}]))))
+
+
 (defn word-list
-  "Renders the word list with pagination and empty state."
-  [{:keys [pages search show-more? words] :or {pages 0 show-more? true}}]
+  "Renders the word list shell (UL) for HTMX swaps."
+  [opts]
   [:ul.word-list
    {:id "word-list"}
-   (if (seq words)
-     (list
-      (for [word words]
-        (word-list-item word))
-      (when show-more?
-        [:li.word-list__load-more
-         {:hx-get     (utils/build-url "/words?limit=5" {:pages (inc pages) :search search})
-          :hx-swap    "outerHTML"
-          :hx-trigger "click"}
-         "Загрузить ещё ↓"]))
-     ;; Empty state
-     [:li.word-list__empty
-      (if (utils/non-blank search)
-        [:div.vocabulary__empty-state
-         [:p.vocabulary__empty-state-text "Ничего не найдено"]
-         [:p.vocabulary__empty-state-hint "Попробуйте другой запрос"]]
-        [:div.vocabulary__empty-state
-         [:p.vocabulary__empty-state-text "Слов пока нет"]
-         [:p.vocabulary__empty-state-hint "Добавьте первое слово на главной странице"]
-         [:button.vocabulary__empty-state-cta
-          {:hx-get "/home" :hx-push-url "true" :hx-swap "innerHTML" :hx-target "#app"}
-          "Добавить слово"]])])])
+   (or (word-items+sentinel opts)
+       [:li.word-list__empty
+        (if (utils/non-blank (:search opts))
+          [:div.vocabulary__empty-state
+           [:p.vocabulary__empty-state-text "Ничего не найдено"]
+           [:p.vocabulary__empty-state-hint "Попробуйте другой запрос"]]
+          [:div.vocabulary__empty-state
+           [:p.vocabulary__empty-state-text "Слов пока нет"]
+           [:p.vocabulary__empty-state-hint "Добавьте первое слово на главной странице"]
+           [:button.vocabulary__empty-state-cta
+            {:hx-get "/home" :hx-push-url "true" :hx-swap "innerHTML" :hx-target "#app"}
+            "Добавить слово"]])])])
+
+
+(defn word-list-chunk
+  "Renders a list chunk for infinite scroll (LI nodes only)."
+  [opts]
+  (word-items+sentinel opts))
 
 
 (defn validation-error-inputs
   "Renders OOB error inputs for validation failures. Preserves user's values."
   [{:keys [value-blank? translation-blank?]}]
-  (cond-> (list)
-    value-blank?
-    translation-blank?
-    (conj
-     [:input.new-word-form__input.new-word-form__input--quick.new-word-form__input--error
-      {:id             "new-word-value"
-       :name           "value"
-       :autocapitalize "off"
-       :autocomplete   "off"
-       :autocorrect    "off"
-       :data-ac-role   "word"
-       :hx-get         "/dictionary-entries"
-       :hx-trigger     "input changed delay:200ms"
-       :hx-sync        "this:replace"
-       :hx-target      "next [data-ac-role='list']"
-       :hx-swap        "innerHTML"
-       :hx-include     "this"
-       :hx-swap-oob    "true"
-       :lang           "de"
-       :placeholder    "Новое слово"
-       :required       true
-       :value          ""}])
-    (conj
-     [:input.new-word-form__input.new-word-form__input--quick.new-word-form__input--error
-      {:hx-swap-oob  "true"
-       :id           "new-word-translation"
-       :name         "translation"
-       :data-ac-role "translation"
-       :autocapitalize "off"
-       :autocomplete "off"
-       :autocorrect  "off"
-       :lang         "ru"
-       :placeholder  "Перевод"
-       :required     true
-       :value        ""}])))
+  (let [base-input-classes "home__add-form-input home__add-form-input--error"]
+    (cond-> (list)
+      value-blank?
+      (conj
+       [:input
+        {:class          base-input-classes
+         :id             "new-word-value"
+         :name           "value"
+         :autocapitalize "off"
+         :autocomplete   "off"
+         :autocorrect    "off"
+         :data-ac-role   "word"
+         :hx-get         "/dictionary-entries"
+         :hx-trigger     "input changed delay:300ms"
+         :hx-sync        "this:replace"
+         :hx-target      "next [data-ac-role='list']"
+         :hx-swap        "innerHTML"
+         :hx-include     "this"
+         :hx-swap-oob    "true"
+         :lang           "de"
+         :placeholder    "Новое слово"
+         :required       true
+         :value          ""}])
+
+      translation-blank?
+      (conj
+       [:input
+        {:class        base-input-classes
+         :hx-swap-oob  "true"
+         :id           "new-word-translation"
+         :name         "translation"
+         :data-ac-role "translation"
+         :autocapitalize "off"
+         :autocomplete "off"
+         :autocorrect  "off"
+         :lang         "ru"
+         :placeholder  "Перевод"
+         :required     true
+         :value        ""}]))))
 
 
 (defn- state-marker
@@ -161,8 +180,9 @@
 
 
 (defn page
-  "Words page. When empty? is true, shows empty state without header/search/footer."
-  [& {:keys [empty?]}]
+  "Words page. When empty? is true, shows empty state without header/search/footer.
+   When :words is provided, renders the list inline (no extra load request)."
+  [& {:keys [empty? words show-more?]}]
   (if empty?
     [:div.vocabulary
      (state-marker true)
@@ -176,36 +196,40 @@
          [:button.vocabulary__empty-state-cta
           {:hx-get "/home" :hx-push-url "true" :hx-swap "innerHTML" :hx-target "#app"}
           "Добавить слово"]]]]]]
-    [:div.vocabulary
-     (state-marker false)
-     [:header.vocabulary__header
-      [:button.vocabulary__back
-       {:hx-get "/home" :hx-push-url "true" :hx-swap "innerHTML" :hx-target "#app"}
-       "← Назад"]
-      [:h1.vocabulary__title "Мои слова"]]
-     [:form.vocabulary__search
-      [:div.input
-       [:span.input__search-icon]
-       [:input.input__input-area.input__input-area--icon
-        {:autocomplete "off"
-         :hx-get       "/words"
-         :placeholder  "Поиск"
-         :hx-target    "#word-list"
-         :hx-swap      "innerHTML"
-         :hx-trigger   "input changed delay:500ms, keyup[key=='Enter']"
-         :name         "search"}]]]
-     [:div.vocabulary__list
-      {:hx-get     "/words"
-       :hx-trigger "load"
-       :hx-target  "#word-list"
-       :hx-swap    "outerHTML"}
-      [:ul.word-list
-       {:id "word-list"}]]
-     [:footer.vocabulary__footer
-      [:button.vocabulary__start.big-button.green-button
-       {:hx-get       "/lesson"
-        :hx-indicator "#loader"
-        :hx-push-url  "true"
-        :hx-swap      "innerHTML"
-        :hx-target    "#app"}
-       "НАЧАТЬ УРОК"]]]))
+    (let [words-query   {:offset 0 :limit 10}
+          base-list-url (utils/build-url "/words" words-query)]
+      [:div.vocabulary
+       (state-marker false)
+       [:header.vocabulary__header
+        [:button.vocabulary__back
+         {:hx-get      "/home"
+          :hx-push-url "true"
+          :hx-swap     "innerHTML"
+          :hx-target   "#app"}
+         "← Назад"]
+        [:h1.vocabulary__title "Мои слова"]]
+       [:form.vocabulary__search
+        [:div.input
+         [:span.input__search-icon]
+         [:input.input__input-area.input__input-area--icon
+          {:autocomplete "off"
+           :hx-get       base-list-url
+           :placeholder  "Поиск"
+           :hx-target    "#word-list"
+           :hx-swap      "outerHTML"
+           :hx-sync      "this:replace"
+           :hx-trigger   "input changed delay:500ms, keyup[key=='Enter']"
+           :name         "search"}]]]
+       [:div.vocabulary__list
+        (word-list
+         {:words-query words-query
+          :show-more?  show-more?
+          :words       words})]
+       [:footer.vocabulary__footer
+        [:button.vocabulary__start.big-button.green-button
+         {:hx-get       "/lesson"
+          :hx-indicator "#loader"
+          :hx-push-url  "true"
+          :hx-swap      "innerHTML"
+          :hx-target    "#app"}
+         "НАЧАТЬ УРОК"]]])))

@@ -36,8 +36,8 @@
    Word summary has :id, :value, :translation, :retention-level."
   [word]
   {:type    trial-type-word
-   :word-id (:id word)
-   :prompt  (:translation word)
+   :word-id (:_id word)
+   :prompt  (-> word :translation first :value)
    :answer  (:value word)})
 
 

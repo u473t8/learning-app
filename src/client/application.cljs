@@ -7,7 +7,7 @@
    [examples :as examples]
    [hiccup :as hiccup]
    [lesson :as lesson]
-   [presenter.lesson :as presenter.lesson]
+   [presenter.vocabulary :as presenter.vocabulary]
    [promesa.core :as p]
    [reitit.http :as http]
    [reitit.http.interceptors.keyword-parameters :as keyword-parameters]
@@ -17,6 +17,7 @@
    [views.home :as views.home]
    [views.lesson :as views.lesson]
    [views.vocabulary :as views.word]
+   [utils :as utils]
    [vocabulary :as vocabulary]))
 
 
@@ -41,6 +42,7 @@
      [:link {:rel "stylesheet" :href "/css/styles.css"}]
      [:script {:src "/js/htmx/htmx.min.js" :defer true}]
      [:script {:src "/js/word-autocomplete.js" :defer true}]
+     [:script {:src "/js/virtual-keyboard.js" :defer true}]
      head]
     [:body
      [:a.app-shell__logo
@@ -76,8 +78,8 @@
   "Injects database instance into request."
   {:name  ::db-interceptor
    :enter (fn [ctx]
-            (update ctx
-                    :request       assoc
+            (update ctx :request assoc
+                    :dbs           (dbs/dbs)
                     :user-db       (dbs/user-db)
                     :device-db     (dbs/device-db)
                     :dictionary-db (dbs/dictionary-db)))})
@@ -95,9 +97,8 @@
 (def ui-routes
   [[""
     ["/home"
-     {:get (fn [{:keys [user-db]}]
-             (p/let [word-count (vocabulary/count user-db)]
-               {:html/body (views.home/page {:word-count word-count})}))}]
+     {:get (fn [_]
+             {:html/body (views.home/page)})}]
 
     ["/dictionary-entries"
      {:get (fn [{:keys [dictionary-db params]}]
@@ -106,73 +107,88 @@
                    {:html/body (views.dictionary/suggestions suggestions prefill)
                     :status    200})
                  (p/catch
-                   (fn [_err]
-                     {:html/body (views.dictionary/suggestions [] nil)
-                      :status    200}))))}]
+                  (fn [_err]
+                    {:html/body (views.dictionary/suggestions [] nil)
+                     :status    200}))))}]
 
     ["/words"
-     {:head (fn [{:keys [user-db]}]
-              (p/let [total (vocabulary/count user-db)]
+     {:head (fn [{:keys [dbs]}]
+              (p/let [total (vocabulary/count dbs)]
                 {:status  200
                  :headers {"X-Total-Count" (str total)}}))
 
-      :get  (fn [{:keys [user-db params headers]}]
-              (let [{:keys [pages search] :or {pages 1}} params
-                    page-size   10
-                    limit       (-> pages js/parseInt (* page-size) inc)
-                    htmx-target (get headers "hx-target")]
-                (p/let [words (vocabulary/list user-db {:limit limit :search search})
-                        total (vocabulary/count user-db)]
-                  {:headers   {"X-Total-Count" (str total)}
-                   :html/body (if (= htmx-target "word-list")
-                                (views.word/word-list
-                                 {:pages      pages
-                                  :search     search
-                                  :show-more? (> total limit)
-                                  :words      words})
-                                (views.word/page {:empty? (zero? total)}))
-                   :status    200})))
+      :get  (fn [{:keys [dbs params headers]}]
+              (let [{:keys [offset limit search fragment]} params
+                    htmx-target (get headers "hx-target")
+                    offset      (utils/parse-int offset 0)
+                    limit       (utils/parse-int limit 10)
+                    chunk?      (= "chunk" fragment)
+                    words-query {:order  :asc
+                                 :limit  limit
+                                 :offset offset
+                                 :search search}]
+                (p/let [{:keys [words total]} (vocabulary/list dbs words-query)]
 
-      :post (fn [{:keys [user-db params]}]
+                  (let [words      (presenter.vocabulary/word-list-props words)
+                        show-more? (> total (+ offset limit))
+                        list-opts  {:words-query words-query
+                                    :show-more?  show-more?
+                                    :words       words}]
+                    {:status    200
+                     :html/body (cond
+                                  chunk?
+                                  (or (views.word/word-list-chunk list-opts) "")
+
+                                  (= htmx-target "word-list")
+                                  (views.word/word-list list-opts)
+
+                                  :else
+                                  (views.word/page
+                                   {:empty? (zero? total)
+                                    :words words
+                                    :show-more? show-more?}))}))))
+
+      :post (fn [{:keys [dbs params]}]
               (let [{:keys [value translation]} params
                     result (domain.vocabulary/validate-new-word value translation)]
                 (if-let [error (:error result)]
                   {:html/body (views.word/validation-error-inputs error)
                    :status    400}
-                  (p/let [word-id (vocabulary/add! user-db value translation)
-                          total   (vocabulary/count user-db)]
+                  (p/let [word-id (vocabulary/add! dbs value translation)]
                     (examples/create-fetch-task! word-id)
-                    {:html/body (views.home/state-marker total {:hx-swap-oob "outerHTML"})
-                     :status    201}))))}]
+                    {:status 201}))))}]
 
     ["/words/:id"
-     {:get    (fn [{:keys [user-db path-params params]}]
+     {:get    (fn [{:keys [dbs path-params params]}]
                 (let [word-id (:id path-params)
                       edit?   (= "true" (:edit params))]
-                  (p/let [word (vocabulary/get user-db word-id)]
+                  (p/let [word (vocabulary/get dbs word-id)]
                     (if word
-                      {:html/body (views.word/word-list-item word {:editing? edit?})
+                      {:html/body (views.word/word-list-item
+                                   (presenter.vocabulary/word-item-props word)
+                                   {:editing? edit?})
                        :status    200}
                       {:status 404}))))
 
-      :put    (fn [{:keys [user-db path-params params]}]
+      :put    (fn [{:keys [dbs path-params params]}]
                 (let [word-id (:id path-params)
                       {:keys [value translation]} params
                       result  (domain.vocabulary/validate-word-update
                                {:word-id word-id :value value :translation translation})]
                   (if-let [error (:error result)]
                     {:status 400 :body error}
-                    (p/let [word (vocabulary/update! user-db word-id value translation)]
+                    (p/let [word (vocabulary/update! dbs word-id value translation)]
                       (if word
-                        {:html/body (views.word/word-list-item word)
+                        {:html/body (views.word/word-list-item
+                                     (presenter.vocabulary/word-item-props word))
                          :status    200}
                         {:status 404})))))
 
-      :delete (fn [{:keys [user-db path-params]}]
+      :delete (fn [{:keys [dbs path-params]}]
                 (let [word-id (:id path-params)]
                   (p/do
-                    (vocabulary/delete! user-db word-id)
-                    (p/let [total (vocabulary/count user-db)]
+                    (vocabulary/delete! dbs word-id)
+                    (p/let [total (vocabulary/count dbs)]
                       (if (zero? total)
                         {:headers   {"HX-Retarget" "#app" "HX-Reswap" "innerHTML"}
                          :html/body (views.word/page {:empty? true})
@@ -180,8 +196,8 @@
                         {:status 200})))))}]
 
     ["/lesson"
-     {:get    (fn [{:keys [user-db device-db]}]
-                (p/let [{:keys [lesson-state error]} (lesson/ensure! user-db device-db {:trial-selector :random})]
+     {:get    (fn [{:keys [dbs]}]
+                (p/let [{:keys [lesson-state error]} (lesson/ensure! dbs {:trial-selector :random})]
                   (cond
                     lesson-state
                     {:html/body (views.lesson/page lesson-state) :status 200}
@@ -192,37 +208,34 @@
                     :else
                     (throw (ex-info "Failed to create lesson" {:error error})))))
 
-      :delete (fn [{:keys [user-db device-db]}]
-                (p/let [_ (lesson/finish! device-db)
-                        word-count (vocabulary/count user-db)]
+      :delete (fn [{:keys [dbs]}]
+                (p/do
+                  (lesson/finish! dbs)
                   {:headers   {"HX-Push-Url" "/home"}
-                   :html/body (views.home/page {:word-count word-count})
+                   :html/body (views.home/page)
                    :status    200}))}]
 
     ["/lesson/answer"
-     {:post (fn [{:keys [user-db device-db params]}]
+     {:post (fn [{:keys [dbs params]}]
               (let [answer (:answer params)]
-                (p/let [{:keys [lesson-state]} (lesson/check-answer! user-db device-db answer)]
+                (p/let [{:keys [lesson-state]} (lesson/check-answer! dbs answer)]
                   (if lesson-state
-                    (let [{:keys [challenge progress footer]} (presenter.lesson/page-props lesson-state)]
-                      {:html/body (list
-                                   (views.lesson/footer footer)
-                                   (views.lesson/challenge challenge {:hx-swap-oob "true"})
-                                   (views.lesson/progress progress {:hx-swap-oob "true"}))
-                       :status    200})
+                    {:html/body (list
+                                 (views.lesson/footer lesson-state)
+                                 (views.lesson/challenge lesson-state {:hx-swap-oob "true"})
+                                 (views.lesson/progress lesson-state {:hx-swap-oob "innerHTML"}))
+                     :status    200}
                     {:status 404}))))}]
 
     ["/lesson/next"
-     {:post (fn [{:keys [device-db]}]
-              (p/let [{:keys [lesson-state]} (lesson/advance! device-db)]
+     {:post (fn [{:keys [dbs]}]
+              (p/let [{:keys [lesson-state]} (lesson/advance! dbs)]
                 (if lesson-state
-                  (let [{:keys [challenge progress]}
-                        (presenter.lesson/page-props lesson-state)]
-                    {:html/body (list
-                                 (views.lesson/input)
-                                 (views.lesson/challenge challenge {:hx-swap-oob "true"})
-                                 (views.lesson/progress progress {:hx-swap-oob "true"}))
-                     :status    200})
+                  {:html/body (list
+                               (views.lesson/input)
+                               (views.lesson/challenge lesson-state {:hx-swap-oob "true"})
+                               (views.lesson/progress lesson-state {:hx-swap-oob "innerHTML"}))
+                   :status    200}
                   {:status 404})))}]]])
 
 

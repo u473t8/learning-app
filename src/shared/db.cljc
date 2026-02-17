@@ -391,6 +391,22 @@
         (throw error)))))
 
 
+(defn find-all
+  "Find all documents matching a query using a single `find` call.
+
+   It uses `info` to get total db `doc-count` and applies it as `:limit`.
+
+   Returns the same shape as `find`: `{:docs [...]}`.
+
+   Any incoming `:limit`/`:skip` in `query` is ignored."
+  ([db query]
+   (let [base-query (dissoc query :limit :skip)]
+     (p/let [{:keys [doc-count]} (info db)]
+       (if (zero? doc-count)
+         {:docs []}
+         (find db (assoc base-query :limit doc-count)))))))
+
+
 (defn create-index
   "Create a PouchDB secondary index.
 

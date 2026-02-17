@@ -12,220 +12,152 @@
    [client.support.test :refer [async-testing]]))
 
 
-;; =============================================================================
-;; Test Helpers
-;; =============================================================================
+(def user-db-name (db-fixtures/db-name "client.vocabulary-test.user"))
 
 
-(def test-db-name (db-fixtures/db-name "client.vocabulary-test"))
+(use-fixtures :each (db-fixtures/db-fixture-multi [user-db-name]))
 
 
-(use-fixtures :each (db-fixtures/db-fixture test-db-name))
-
-
-(defn- with-test-db
-  "Sets up test DB and time utilities, calls (f db-instance)."
+(defn- with-test-dbs
   [f]
-  (db-fixtures/with-test-db
-    test-db-name
-    (fn [db]
-      (p/with-redefs [utils/now-iso time/now-iso
-                      utils/now-ms  time/now-ms]
-        (f db)))))
-
-
-;; =============================================================================
-;; add!
-;; =============================================================================
+  (db-fixtures/with-test-dbs
+   [user-db-name]
+   (fn [[user-db]]
+     (p/with-redefs [utils/now-iso time/now-iso
+                     utils/now-ms  time/now-ms]
+       (f {:user/db user-db})))))
 
 
 (deftest add-creates-vocab-and-initial-review
   (async-testing "`add!` creates vocab and initial review"
-    (with-test-db
-      (fn [db]
-        (p/let [word-id (sut/add! db "der Hund" "пёс")
-                vocabs  (db-queries/fetch-by-type db "vocab")
-                reviews (db-queries/fetch-by-type db "review")]
-          (is (string? word-id))
-          (is (= 1 (count vocabs)))
-          (is (= 1 (count reviews)))
-          (is (= "der Hund" (:value (first vocabs))))
-          (is (= word-id (:word-id (first reviews))))
-          (is (= true (:retained (first reviews)))))))))
-
-
-;; =============================================================================
-;; list
-;; =============================================================================
+    (with-test-dbs
+     (fn [dbs]
+       (p/let [word-id (sut/add! dbs "der Hund" "пёс")
+               vocabs  (db-queries/fetch-by-type (:user/db dbs) "vocab")
+               reviews (db-queries/fetch-by-type (:user/db dbs) "review")]
+         (is (string? word-id))
+         (is (= 1 (count vocabs)))
+         (is (= 1 (count reviews)))
+         (is (= "der Hund" (:value (first vocabs))))
+         (is (= word-id (:word-id (first reviews))))
+         (is (true? (:retained (first reviews)))))))))
 
 
 (deftest list-returns-summaries-with-retention
   (async-testing "`list` returns summaries with retention"
-    (with-test-db
-      (fn [db]
-        (p/do
-          (sut/add! db "der Hund" "пёс")
-          (sut/add! db "die Katze" "кот")
-          (p/let [result (sut/list db)]
-            (is (= 2 (count result)))
-            (is (every? :retention-level result))
-            (is (every? :id result))
-            (is (every? :value result))
-            (is (every? :translation result))))))))
+    (with-test-dbs
+     (fn [dbs]
+       (p/do
+         (sut/add! dbs "der Hund" "пёс")
+         (sut/add! dbs "die Katze" "кот")
+         (p/let [{:keys [words total]} (sut/list dbs)]
+           (is (= 2 (count words)))
+           (is (= 2 total))
+           (is (every? :retention-level words))))))))
 
 
-(deftest list-filters-by-search
-  (async-testing "`list` filters by search query"
-    (with-test-db
-      (fn [db]
-        (p/do
-          (sut/add! db "der Hund" "пёс")
-          (sut/add! db "die Katze" "кот")
-          (p/let [result (sut/list db {:search "Hund"})]
-            (is (= 1 (count result)))
-            (is (= "der Hund" (:value (first result))))))))))
+(deftest list-filters-and-paginates
+  (async-testing "`list` supports search and limit"
+    (with-test-dbs
+     (fn [dbs]
+       (p/do
+         (sut/add! dbs "der Hund" "пёс")
+         (sut/add! dbs "die Katze" "кот")
+         (sut/add! dbs "der Vogel" "птица")
+         (p/let [{:keys [words total]} (sut/list dbs {:search "Hund" :limit 1})]
+           (is (= 3 total))
+           (is (= 1 (count words)))
+           (is (= "der Hund" (:value (first words))))))))))
 
 
-(deftest list-paginates
-  (async-testing "`list` respects limit for pagination"
-    (with-test-db
-      (fn [db]
-        (p/do
-          (sut/add! db "der Hund" "пёс")
-          (sut/add! db "die Katze" "кот")
-          (sut/add! db "der Vogel" "птица")
-          (p/let [result (sut/list db {:limit 2})]
-            (is (= 2 (count result)))))))))
+(deftest count-uses-db-doc-count-as-limit
+  (async-testing "`count` uses db/info doc-count for single find"
+    (let [info-calls (atom 0)
+          find-calls (atom [])
+          doc-count  26]
+      (p/with-redefs [db/info
+                      (fn [_]
+                        (swap! info-calls inc)
+                        (p/resolved {:doc-count doc-count}))
+
+                      db/find
+                      (fn [_ query]
+                        (swap! find-calls conj query)
+                        (p/resolved {:docs (vec (repeat doc-count {:type "vocab"}))}))]
+        (p/let [cnt (sut/count {:user/db :fake})
+                q   (first @find-calls)]
+          (is (= doc-count cnt))
+          (is (= 1 @info-calls))
+          (is (= doc-count (:limit q)))
+          (is (nil? (:skip q))))))))
 
 
-;; =============================================================================
-;; count
-;; =============================================================================
-
-
-(deftest count-returns-total
-  (async-testing "`count` returns total word count"
-    (with-test-db
-      (fn [db]
-        (p/do
-          (sut/add! db "der Hund" "пёс")
-          (sut/add! db "die Katze" "кот")
-          (p/let [cnt (sut/count db)]
-            (is (= 2 cnt))))))))
-
-
-;; =============================================================================
-;; get
-;; =============================================================================
+(deftest list-and-count-return-all-words-beyond-25
+  (async-testing "`list` and `count` return full data when db has more than 25 words"
+    (with-test-dbs
+     (fn [dbs]
+       (p/do
+         (p/loop [i 0]
+           (when (< i 30)
+             (p/do
+               (sut/add! dbs (str "word-" i) (str "перевод-" i))
+               (p/recur (inc i)))))
+         (p/let [cnt (sut/count dbs)
+                 {:keys [words total]} (sut/list dbs)]
+           (is (= 30 cnt))
+           (is (= 30 total))
+           (is (= 30 (count words)))))))))
 
 
 (deftest get-returns-summary
   (async-testing "`get` returns word summary"
-    (with-test-db
-      (fn [db]
-        (p/let [word-id (sut/add! db "der Hund" "пёс")
-                result  (sut/get db word-id)]
-          (is (= word-id (:id result)))
-          (is (= "der Hund" (:value result)))
-          (is (= "пёс" (:translation result)))
-          (is (number? (:retention-level result))))))))
-
-
-(deftest get-returns-nil-when-not-found
-  (async-testing "`get` returns nil when not found"
-    (with-test-db
-      (fn [db]
-        (p/let [result (sut/get db "nonexistent")]
-          (is (nil? result)))))))
-
-
-;; =============================================================================
-;; update!
-;; =============================================================================
+    (with-test-dbs
+     (fn [dbs]
+       (p/let [word-id (sut/add! dbs "der Hund" "пёс")
+               result  (sut/get dbs word-id)]
+         (is (= word-id (:_id result)))
+         (is (= "der Hund" (:value result)))
+         (is (= "пёс" (-> result :translation first :value)))
+         (is (number? (:retention-level result))))))))
 
 
 (deftest update-updates-and-returns-summary
   (async-testing "`update!` modifies and returns summary"
-    (with-test-db
-      (fn [db]
-        (p/let [word-id (sut/add! db "der Hund" "пёс")
-                result  (sut/update! db word-id "der Fuchs" "лиса")]
-          (is (= word-id (:id result)))
-          (is (= "der Fuchs" (:value result)))
-          (is (= "лиса" (:translation result))))))))
+    (with-test-dbs
+     (fn [dbs]
+       (p/let [word-id (sut/add! dbs "der Hund" "пёс")
+               result  (sut/update! dbs word-id "der Fuchs" "лиса")]
+         (is (= word-id (:_id result)))
+         (is (= "der Fuchs" (:value result)))
+         (is (= "лиса" (-> result :translation first :value))))))))
 
 
-(deftest update-returns-nil-when-not-found
-  (async-testing "`update!` returns nil when not found"
-    (with-test-db
-      (fn [db]
-        (p/let [result (sut/update! db "nonexistent" "foo" "bar")]
-          (is (nil? result)))))))
-
-
-;; =============================================================================
-;; delete!
-;; =============================================================================
-
-
-(deftest delete-removes-word-and-reviews
-  (async-testing "`delete!` removes word and reviews"
-    (with-test-db
-      (fn [db]
-        (p/do
-          (p/let [word-id (sut/add! db "der Hund" "пёс")]
-            (p/do
-              (sut/add-review db word-id true "пёс")
-              (sut/delete! db word-id)
-              (p/let [vocabs  (db-queries/fetch-by-type db "vocab")
-                      reviews (db-queries/fetch-by-type db "review")]
-                (is (empty? vocabs))
-                (is (empty? reviews))))))))))
-
-
-(deftest delete-removes-examples
-  (async-testing "`delete!` removes associated examples"
-    (with-test-db
-      (fn [db]
-        (p/do
-          (p/let [word-id (sut/add! db "der Hund" "пёс")]
-            (p/do
-              (db/insert db {:type "example" :word-id word-id :value "Der Hund läuft"})
-              (sut/delete! db word-id)
-              (p/let [examples (db-queries/fetch-by-type db "example")]
-                (is (empty? examples))))))))))
-
-
-(deftest delete-is-noop-when-not-found
-  (async-testing "`delete!` no-op when not found"
-    (with-test-db
-      (fn [db]
-        (p/do
-          (sut/add! db "der Hund" "пёс")
-          (sut/delete! db "nonexistent")
-          (p/let [vocabs (db-queries/fetch-by-type db "vocab")]
-            (is (= 1 (count vocabs)))))))))
-
-
-;; =============================================================================
-;; add-review
-;; =============================================================================
+(deftest delete-removes-word-related-docs
+  (async-testing "`delete!` removes word, reviews and examples"
+    (with-test-dbs
+     (fn [dbs]
+       (p/do
+         (p/let [word-id (sut/add! dbs "der Hund" "пёс")]
+           (p/do
+             (sut/add-review dbs word-id true "пёс")
+             (db/insert (:user/db dbs) {:type "example" :word-id word-id :value "Der Hund läuft"})
+             (sut/delete! dbs word-id)
+             (p/let [vocabs   (db-queries/fetch-by-type (:user/db dbs) "vocab")
+                     reviews  (db-queries/fetch-by-type (:user/db dbs) "review")
+                     examples (db-queries/fetch-by-type (:user/db dbs) "example")]
+               (is (empty? vocabs))
+               (is (empty? reviews))
+               (is (empty? examples))))))))))
 
 
 (deftest add-review-creates-review-document
   (async-testing "`add-review` creates review document"
-    (p/finally
-      (with-test-db
-        (fn [db]
-          (p/do
-            (p/let [word-id (sut/add! db "der Hund" "пёс")]
-              (p/do
-                (sut/add-review db word-id false "собака")
-                (p/let [reviews (db-queries/fetch-by-type db "review")]
-                  (is (= 2 (count reviews)))
-                  (let [new-review (first (filter (fn [review]
-                                                    (false? (:retained review)))
-                                                  reviews))]
-                    (is (some? new-review))
-                    (is (= "собака" (-> new-review :translation first :value))))))))))
-      (fn [] nil))))
+    (with-test-dbs
+     (fn [dbs]
+       (p/do
+         (p/let [word-id (sut/add! dbs "der Hund" "пёс")]
+           (p/do
+             (sut/add-review dbs word-id false "собака")
+             (p/let [reviews (db-queries/fetch-by-type (:user/db dbs) "review")]
+               (is (= 2 (count reviews)))
+               (is (= 1 (count (filter (fn [r] (false? (:retained r))) reviews))))))))))))

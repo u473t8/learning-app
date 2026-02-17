@@ -59,6 +59,7 @@ textarea {
 html {
   -webkit-overflow-scrolling: touch;
   box-sizing: border-box;
+  overflow-x: hidden;
   overflow-y: auto;
   touch-action: manipulation;
 }
@@ -76,6 +77,7 @@ body {
   color: rgb(var(--color-black-text));
   font: 500 17px/20px sans-serif;
   margin: 0;
+  overflow-x: hidden;
 }
 
 @media (min-width: 700px) {

@@ -5,86 +5,93 @@
    [db :as db]
    [domain.vocabulary :as domain]
    [promesa.core :as p]
+   [retention :as retention]
    [utils :as utils]))
 
 
 (defn add!
-  "Adds a new vocabulary word with an initial review.
-   The initial review marks the first exposure to the word,
-   providing a baseline timestamp for retention decay calculation."
-  [db value translation]
+  "Adds a new vocabulary word with an initial review."
+  [dbs value translation]
   (let [now-iso (utils/now-iso)
         word    (domain/new-word value translation now-iso)]
-    (p/let [{:keys [id]} (db/insert db word)
+    (p/let [{:keys [id]} (db/insert (:user/db dbs) word)
             review       (domain/new-review id true translation now-iso)]
-      (db/insert db review)
+      (db/insert (:user/db dbs) review)
       id)))
 
 
 (defn get
-  "Returns a word summary by id, or nil if not found."
-  [db word-id]
-  (p/let [word (db/get db word-id)]
+  "Returns a word row by id, or nil if not found."
+  [dbs word-id]
+  (p/let [word (db/get (:user/db dbs) word-id)]
     (when word
-      (p/let [{reviews :docs} (db/find db {:selector {:type "review" :word-id word-id}})]
-        (domain/word-summary word reviews (utils/now-ms))))))
+      (p/let [retention-level (retention/level dbs word-id)]
+        (assoc word :retention-level retention-level)))))
 
 
 (defn list
-  "Returns vocabulary words with retention levels.
-   Options:
-   - :order - :desc (default, highest first) or :asc (lowest first)
-   - :limit - max number of words to return (nil for all)
-   - :offset - number of words to skip
-   - :search - filter words by value/translation"
-  ([db] (list db {}))
-  ([db {:keys [order limit offset search] :or {order :desc}}]
-   (p/let [{words :docs}   (db/find db {:selector {:type "vocab"}})
-           {reviews :docs} (db/find db {:selector {:type "review"}})]
-     (domain/summarize-words
-      words
-      reviews
-      (utils/now-ms)
-      {:order  order
-       :limit  limit
-       :offset offset
-       :search search}))))
+  "Returns vocabulary rows with retention levels."
+  ([dbs] (list dbs {}))
+  ([dbs {:keys [order limit offset search]
+         :or   {order  :desc}}]
+   (p/let [{words :docs}    (db/find-all (:user/db dbs) {:selector {:type "vocab"}})
+           retention-levels (retention/levels dbs (mapv :_id words))]
+
+     (let [total-count        (clojure/count words)
+           word-id->retention (->> retention-levels
+                                   (map (juxt :word-id :retention-level))
+                                   (into {}))
+           words (cond->> words
+                   (utils/non-blank search)
+                   (filter (fn [{:keys [value translation]}]
+                             (or (utils/includes? value search)
+                                 (some #(utils/includes? (:value %) search) translation)))))
+
+           words (->> words
+                      (map (fn [word]
+                             (assoc word :retention-level (word-id->retention (:_id word) 0))))
+                      (sort-by :retention-level (if (= order :asc) < >)))
+           words (cond->> words
+                   offset   (drop offset)
+                   limit    (take limit))]
+       {:total total-count
+        :words (vec words)}))))
 
 
 (defn count
   "Returns the total number of vocabulary words."
-  [db]
-  (p/let [{words :docs} (db/find db {:selector {:type "vocab"}})]
+  [dbs]
+  (p/let [{words :docs} (db/find-all (:user/db dbs) {:selector {:type "vocab"}})]
     (clojure/count words)))
 
 
 (defn update!
-  "Updates a word's value and translation. Returns updated summary, or nil if not found."
-  [db word-id value translation]
-  (p/let [word (db/get db word-id)]
+  "Updates a word's value and translation. Returns updated row, or nil if not found."
+  [dbs word-id value translation]
+  (p/let [word (db/get (:user/db dbs) word-id)]
     (when word
       (p/let [word (domain/update-word word value translation (utils/now-iso))
-              _ (db/insert db word)
-              {reviews :docs} (db/find db {:selector {:type "review" :word-id word-id}})]
-        (domain/word-summary (assoc word :_id word-id) reviews (utils/now-ms))))))
+              _ (db/insert (:user/db dbs) word)
+              retention-level (retention/level dbs word-id)]
+        (assoc word :_id word-id :retention-level retention-level)))))
 
 
 (defn delete!
   "Deletes a word and all its associated reviews and examples.
    No-op if word doesn't exist."
-  [db word-id]
-  (p/let [word (db/get db word-id)]
+  [dbs word-id]
+  (p/let [word (db/get (:user/db dbs) word-id)]
     (when word
-      (p/let [{reviews :docs}  (db/find db {:selector {:type "review" :word-id word-id}})
-              {examples :docs} (db/find db {:selector {:type "example" :word-id word-id}})]
-        (p/do
-          (p/all (map #(db/remove db %) reviews))
-          (p/all (map #(db/remove db %) examples))
-          (db/remove db word))))))
+      (p/let [{reviews :docs}  (db/find-all (:user/db dbs) {:selector {:type "review" :word-id word-id}})
+              {examples :docs} (db/find-all (:user/db dbs) {:selector {:type "example" :word-id word-id}})]
+        (p/all (map #(db/remove (:user/db dbs) %) reviews))
+        (p/all (map #(db/remove (:user/db dbs) %) examples))
+        (db/remove (:user/db dbs) word)))))
 
 
 (defn add-review
-  "Creates a review document for a word."
-  [db word-id retained translation]
+  "Creates a review document for a word and updates its retention model."
+  [dbs word-id retained translation]
   (let [review (domain/new-review word-id retained translation (utils/now-iso))]
-    (db/insert db review)))
+    (p/let [insert-result (db/insert (:user/db dbs) review)]
+      insert-result)))

@@ -54,8 +54,8 @@
 
 (defn list
   "Retrieves example documents for the given word-ids."
-  [db word-ids]
-  (p/let [{examples :docs} (db/find db {:selector {:type "example" :word-id {:$in word-ids}}})]
+  [dbs word-ids]
+  (p/let [{examples :docs} (db/find (:device/db dbs) {:selector {:type "example" :word-id {:$in word-ids}}})]
     examples))
 
 

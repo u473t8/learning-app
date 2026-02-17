@@ -33,3 +33,10 @@
 (defn dictionary-db
   []
   (db/use dictionary-db-name))
+
+
+(defn dbs
+  []
+  {:user/db       (user-db)
+   :device/db     (device-db)
+   :dictionary/db (dictionary-db)})
