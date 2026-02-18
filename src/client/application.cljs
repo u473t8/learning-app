@@ -41,6 +41,7 @@
      [:link {:rel "manifest" :href "/manifest.json"}]
      [:link {:rel "stylesheet" :href "/css/styles.css"}]
      [:script {:src "/js/htmx/htmx.min.js" :defer true}]
+     [:script {:src "/js/htmx/class-tools.js" :defer true}]
      [:script {:src "/js/word-autocomplete.js" :defer true}]
      [:script {:src "/js/virtual-keyboard.js" :defer true}]
      head]
@@ -107,9 +108,9 @@
                    {:html/body (views.dictionary/suggestions suggestions prefill)
                     :status    200})
                  (p/catch
-                  (fn [_err]
-                    {:html/body (views.dictionary/suggestions [] nil)
-                     :status    200}))))}]
+                   (fn [_err]
+                     {:html/body (views.dictionary/suggestions [] nil)
+                      :status    200}))))}]
 
     ["/words"
      {:head (fn [{:keys [dbs]}]
@@ -144,8 +145,8 @@
 
                                   :else
                                   (views.word/page
-                                   {:empty? (zero? total)
-                                    :words words
+                                   {:empty?     (zero? total)
+                                    :words      words
                                     :show-more? show-more?}))}))))
 
       :post (fn [{:keys [dbs params]}]
@@ -156,7 +157,8 @@
                    :status    400}
                   (p/let [word-id (vocabulary/add! dbs value translation)]
                     (examples/create-fetch-task! word-id)
-                    {:status 201}))))}]
+                    {:html/body (views.home/add-success)
+                     :status    201}))))}]
 
     ["/words/:id"
      {:get    (fn [{:keys [dbs path-params params]}]

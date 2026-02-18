@@ -71,6 +71,15 @@
   width: 100%;
 }
 
+@keyframes home-add-success-flash {
+  0%   { background: rgb(var(--color-sea-sponge), 0.2);}
+  100% { background: rgb(255 255 255 / 0.7);}
+}
+
+.home__add--success {
+  animation: home-add-success-flash 1.2s ease-out forwards;
+}
+
 .home__add {
   background: rgb(255 255 255 / 0.7);
   border: 1px solid rgb(0 0 0 / 0.08);
