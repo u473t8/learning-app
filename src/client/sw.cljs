@@ -43,6 +43,7 @@
     "/fonts/Nunito/nunito-v26-cyrillic_latin-700.woff2"
     "/fonts/Nunito/nunito-v26-cyrillic_latin-800.woff2"
     "/js/htmx/htmx.min.js"
+    "/js/htmx/class-tools.js"
     "/favicon.ico"
     "/icons.svg"
     "/icons/ue-192.png"
