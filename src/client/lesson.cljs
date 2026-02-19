@@ -1,6 +1,6 @@
 (ns lesson
   (:require
-   [db :as db]
+   [dbs :as dbs]
    [domain.lesson :as domain]
    [examples :as examples]
    [lambdaisland.glogi :as log]
@@ -11,7 +11,7 @@
 
 (defn- state
   [dbs]
-  (db/get (:device/db dbs) domain/lesson-id))
+  (dbs/get dbs "lesson" domain/lesson-id))
 
 
 (def max-answer-length
@@ -49,7 +49,7 @@
                  word-ids      (mapv :id lesson-words)
                  examples      (examples/list dbs word-ids)
                  lesson-state  (domain/initial-state lesson-words examples trial-selector (utils/now-iso))
-                 {:keys [rev]} (db/insert (:device/db dbs) lesson-state)]
+                 {:keys [rev]} (dbs/insert dbs lesson-state)]
            {:lesson-state (assoc lesson-state :_rev rev)})))
      (fn [err]
        (log/error :lesson/start-failed {:error (ex-message err)})
@@ -89,7 +89,7 @@
                (:word-id current-trial)
                (-> lesson-state domain/last-result :correct?)
                (:prompt current-trial)))
-            (p/let [{:keys [rev]} (db/insert (:device/db dbs) lesson-state)]
+            (p/let [{:keys [rev]} (dbs/insert dbs lesson-state)]
               {:lesson-state (assoc lesson-state :_rev rev)}))
           (fn [err]
             (log/error :lesson/check-answer-save-failed {:error (ex-message err)})
@@ -108,7 +108,7 @@
         {:error :lesson-not-found})
       (when-let [next-state (domain/advance lesson-state)]
         (p/catch
-          (p/let [{:keys [rev]} (db/insert (:device/db dbs) next-state)]
+          (p/let [{:keys [rev]} (dbs/insert dbs next-state)]
             {:lesson-state (assoc next-state :_rev rev)})
           (fn [err]
             (log/error :advance-lesson/save-failed {:error (ex-message err)})
@@ -119,4 +119,4 @@
   [dbs]
   (p/let [existing (state dbs)]
     (when existing
-      (db/remove (:device/db dbs) existing))))
+      (dbs/remove dbs existing))))

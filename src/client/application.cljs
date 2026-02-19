@@ -76,14 +76,10 @@
 
 
 (def db-interceptor
-  "Injects database instance into request."
+  "Injects database instances into request."
   {:name  ::db-interceptor
    :enter (fn [ctx]
-            (update ctx :request assoc
-                    :dbs           (dbs/dbs)
-                    :user-db       (dbs/user-db)
-                    :device-db     (dbs/device-db)
-                    :dictionary-db (dbs/dictionary-db)))})
+            (assoc-in ctx [:request :dbs] (dbs/dbs)))})
 
 
 (def dictionary-sync-interceptor
@@ -102,9 +98,9 @@
              {:html/body (views.home/page)})}]
 
     ["/dictionary-entries"
-     {:get (fn [{:keys [dictionary-db params]}]
+     {:get (fn [{:keys [dbs params]}]
              (-> (p/let [{:keys [suggestions prefill]}
-                         (dictionary/suggest dictionary-db (:value params))]
+                         (dictionary/suggest dbs (:value params))]
                    {:html/body (views.dictionary/suggestions suggestions prefill)
                     :status    200})
                  (p/catch
@@ -178,13 +174,13 @@
                       {:status 404}))))
 
       :put    (fn [{:keys [dbs path-params params]}]
-                (let [word-id (:id path-params)
-                      {:keys [value translation]} params
-                      result  (domain.vocabulary/validate-word-update
-                               {:word-id word-id :value value :translation translation})]
+                (let [word-id     (:id path-params)
+                      translation (:translation params)
+                      result      (domain.vocabulary/validate-word-update
+                                   {:word-id word-id :translation translation})]
                   (if-let [error (:error result)]
                     {:status 400 :body error}
-                    (p/let [word (vocabulary/update! dbs word-id value translation)]
+                    (p/let [word (vocabulary/update! dbs word-id translation)]
                       (if word
                         {:html/body (views.word/word-list-item
                                      (presenter.vocabulary/word-item-props word))

@@ -40,7 +40,7 @@
   (async-testing "short-circuits on empty string"
     (with-test-db
       (fn [db]
-        (p/let [result (sut/suggest db "")]
+        (p/let [result (sut/suggest {:dictionary/db db}"")]
           (is (= {:suggestions [] :prefill nil} result)))))))
 
 
@@ -48,7 +48,7 @@
   (async-testing "short-circuits on nil input"
     (with-test-db
       (fn [db]
-        (p/let [result (sut/suggest db nil)]
+        (p/let [result (sut/suggest {:dictionary/db db}nil)]
           (is (= {:suggestions [] :prefill nil} result)))))))
 
 
@@ -66,7 +66,7 @@
                      (sf-doc "sf:hund"
                              "hund"
                              [{:lemma-id "l1" :lemma "Hund" :rank 80}]))
-          (p/let [result (sut/suggest db "xyz")]
+          (p/let [result (sut/suggest {:dictionary/db db}"xyz")]
             (is (= [] (:suggestions result)))
             (is (nil? (:prefill result)))))))))
 
@@ -85,7 +85,7 @@
                      (sf-doc "sf:hund"
                              "hund"
                              [{:lemma-id "l1" :lemma "Hund" :rank 80}]))
-          (p/let [result (sut/suggest db "Hund")]
+          (p/let [result (sut/suggest {:dictionary/db db}"Hund")]
             (is (= 1 (count (:suggestions result))))
             (is (= "Hund" (:lemma (first (:suggestions result)))))))))))
 
@@ -108,7 +108,7 @@
                      (sf-doc "sf:hunde"
                              "hunde"
                              [{:lemma-id "l1" :lemma "Hund" :rank 90}]))
-          (p/let [result (sut/suggest db "hund")]
+          (p/let [result (sut/suggest {:dictionary/db db}"hund")]
             (is (= 1 (count (:suggestions result))))
             (is (= 90 (:rank (first (:suggestions result)))))))))))
 
@@ -131,7 +131,7 @@
                                       :lemma    (str "Word" i)
                                       :rank     (* i 10)})
                                    (range 1 13))))
-          (p/let [result (sut/suggest db "a")]
+          (p/let [result (sut/suggest {:dictionary/db db}"a")]
             (is (= 10 (count (:suggestions result))))
             (is (= 120 (:rank (first (:suggestions result)))))))))))
 
@@ -150,7 +150,7 @@
                      (sf-doc "sf:hund"
                              "hund"
                              [{:lemma-id "l1" :lemma "Hund" :rank 80}]))
-          (p/let [result (sut/suggest db "Hund")]
+          (p/let [result (sut/suggest {:dictionary/db db}"Hund")]
             (is (= "Hund" (:prefill result)))))))))
 
 
@@ -163,5 +163,5 @@
                      (sf-doc "sf:hunde"
                              "hunde"
                              [{:lemma-id "l1" :lemma "Hunde" :rank 80}]))
-          (p/let [result (sut/suggest db "Hund")]
+          (p/let [result (sut/suggest {:dictionary/db db}"Hund")]
             (is (nil? (:prefill result)))))))))

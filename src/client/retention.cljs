@@ -1,7 +1,7 @@
 (ns retention
   (:require
    [clojure.math :as math]
-   [db :as db]
+   [dbs :as dbs]
    [promesa.core :as p]
    [utils :as utils]))
 
@@ -56,9 +56,9 @@
   ([dbs word-ids] (levels dbs word-ids (utils/now-ms)))
   ([dbs word-ids now-ms]
    (if (seq word-ids)
-     (p/let [{reviews :docs} (db/find-all (:user/db dbs)
-                                          {:selector {:type    "review"
-                                                      :word-id {:$in (vec word-ids)}}})
+     (p/let [{reviews :docs} (dbs/find-all dbs
+                                           {:selector {:type    "review"
+                                                       :word-id {:$in (vec word-ids)}}})
              word-id->reviews (group-by :word-id reviews)]
        (mapv (fn [word-id]
                {:word-id         word-id
@@ -74,7 +74,7 @@
    Fetches reviews from the database and computes on the fly."
   ([dbs word-id] (level dbs word-id (utils/now-ms)))
   ([dbs word-id now-ms]
-   (p/let [{reviews :docs} (db/find-all (:user/db dbs)
-                                        {:selector {:type    "review"
-                                                    :word-id word-id}})]
+   (p/let [{reviews :docs} (dbs/find-all dbs
+                                         {:selector {:type    "review"
+                                                     :word-id word-id}})]
      (retention-level reviews now-ms))))

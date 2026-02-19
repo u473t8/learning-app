@@ -2,17 +2,27 @@
   (:refer-clojure :exclude [list count get])
   (:require
    [clojure.core :as clojure]
-   [db :as db]
+   [dbs :as dbs]
    [domain.vocabulary :as domain]
    [promesa.core :as p]
    [retention :as retention]
    [utils :as utils]))
 
 
+(defn- find-all
+  ([dbs kind]
+   (find-all dbs nil kind))
+  ([dbs word-id kind]
+   (p/let [{docs :docs} (dbs/find-all dbs
+                                      (cond-> {:selector kind}
+                                        (some? word-id) (assoc-in [:selector :word-id] word-id)))]
+     docs)))
+
+
 (defn- find-duplicate
   "Find an existing vocab doc whose normalized value matches `normalized`."
   [dbs normalized]
-  (p/let [{docs :docs} (db/find-all (:user/db dbs) {:selector {:type "vocab"}})]
+  (p/let [docs (find-all dbs "vocab")]
     (first (filter #(= normalized (domain/normalize-value (:value %))) docs))))
 
 
@@ -30,19 +40,19 @@
       (if existing
         (let [merged  (domain/merge-translations (:translation existing) parsed)
               updated (assoc existing :translation merged, :modified-at now-iso)]
-          (p/let [_ (db/insert (:user/db dbs) updated)]
+          (p/let [_ (dbs/insert dbs updated)]
             {:word-id (:_id existing) :created? false}))
         (let [word (domain/new-word value parsed now-iso)]
-          (p/let [{:keys [id]} (db/insert (:user/db dbs) word)
+          (p/let [{:keys [id]} (dbs/insert dbs word)
                   review       (domain/new-review id true translation now-iso)]
-            (db/insert (:user/db dbs) review)
+            (dbs/insert dbs review)
             {:word-id id :created? true})))))))
 
 
 (defn get
   "Returns a word row by id, or nil if not found."
   [dbs word-id]
-  (p/let [word (db/get (:user/db dbs) word-id)]
+  (p/let [word (dbs/get dbs "vocab" word-id)]
     (when word
       (p/let [retention-level (retention/level dbs word-id)]
         (assoc word :retention-level retention-level)))))
@@ -53,7 +63,7 @@
   ([dbs] (list dbs {}))
   ([dbs {:keys [order limit offset search]
          :or   {order  :desc}}]
-   (p/let [{words :docs}    (db/find-all (:user/db dbs) {:selector {:type "vocab"}})
+   (p/let [words            (find-all dbs "vocab")
            retention-levels (retention/levels dbs (mapv :_id words))]
 
      (let [total-count        (clojure/count words)
@@ -80,17 +90,17 @@
 (defn count
   "Returns the total number of vocabulary words."
   [dbs]
-  (p/let [{words :docs} (db/find-all (:user/db dbs) {:selector {:type "vocab"}})]
+  (p/let [words (find-all dbs "vocab")]
     (clojure/count words)))
 
 
 (defn update!
-  "Updates a word's value and translation. Returns updated row, or nil if not found."
-  [dbs word-id value translation]
-  (p/let [word (db/get (:user/db dbs) word-id)]
+  "Updates a word's translation. Returns updated row, or nil if not found."
+  [dbs word-id translation]
+  (p/let [word (dbs/get dbs "vocab" word-id)]
     (when word
-      (p/let [word (domain/update-word word value translation (utils/now-iso))
-              _ (db/insert (:user/db dbs) word)
+      (p/let [word (domain/update-word word translation (utils/now-iso))
+              _    (dbs/insert dbs word)
               retention-level (retention/level dbs word-id)]
         (assoc word :_id word-id :retention-level retention-level)))))
 
@@ -99,18 +109,18 @@
   "Deletes a word and all its associated reviews and examples.
    No-op if word doesn't exist."
   [dbs word-id]
-  (p/let [word (db/get (:user/db dbs) word-id)]
+  (p/let [word (dbs/get dbs "vocab" word-id)]
     (when word
-      (p/let [{reviews :docs}  (db/find-all (:user/db dbs) {:selector {:type "review" :word-id word-id}})
-              {examples :docs} (db/find-all (:user/db dbs) {:selector {:type "example" :word-id word-id}})]
-        (p/all (map #(db/remove (:user/db dbs) %) reviews))
-        (p/all (map #(db/remove (:user/db dbs) %) examples))
-        (db/remove (:user/db dbs) word)))))
+      (p/let [reviews  (find-all dbs word-id "review")
+              examples (find-all dbs word-id "example")]
+        (p/all (map #(dbs/remove dbs %) reviews))
+        (p/all (map #(dbs/remove dbs %) examples))
+        (dbs/remove dbs word)))))
 
 
 (defn add-review
   "Creates a review document for a word and updates its retention model."
   [dbs word-id retained translation]
   (let [review (domain/new-review word-id retained translation (utils/now-iso))]
-    (p/let [insert-result (db/insert (:user/db dbs) review)]
+    (p/let [insert-result (dbs/insert dbs review)]
       insert-result)))

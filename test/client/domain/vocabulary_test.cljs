@@ -18,8 +18,8 @@
 (deftest update-word-doc-updates-values
   (testing "user updates an existing word"
     (let [word    (sut/new-word "der Hund" [{:lang "ru" :value "пёс"}] "2024-01-01T00:00:00.000Z")
-          updated (sut/update-word word "der Fuchs" "лиса" "2024-01-02T00:00:00.000Z")]
-      (is (= "der Fuchs" (:value updated)))
+          updated (sut/update-word word "лиса" "2024-01-02T00:00:00.000Z")]
+      (is (= "der Hund" (:value updated)))   ; unchanged
       (is (= "лиса" (-> updated :translation first :value)))
       (is (= "2024-01-01T00:00:00.000Z" (:created-at updated)))
       (is (= "2024-01-02T00:00:00.000Z" (:modified-at updated))))))
