@@ -94,8 +94,9 @@
 (def ui-routes
   [[""
     ["/home"
-     {:get (fn [_]
-             {:html/body (views.home/page)})}]
+     {:get (fn [{:keys [dbs]}]
+             (p/let [total (vocabulary/count dbs)]
+               {:html/body (views.home/page :empty-vocab? (zero? total))}))}]
 
     ["/dictionary-entries"
      {:get (fn [{:keys [dbs params]}]
@@ -151,14 +152,16 @@
                 (if-let [error (:error result)]
                   {:html/body (views.word/validation-error-inputs error)
                    :status    400}
-                  (p/let [result (vocabulary/add! dbs value translation)]
+                  (p/let [total  (vocabulary/count dbs)
+                          result (vocabulary/add! dbs value translation)]
                     (if (:error result)
                       {:html/body (views.word/validation-error-inputs {:translation-blank? true})
                        :status    400}
-                      (let [{:keys [word-id created?]} result]
+                      (let [{:keys [word-id created?]} result
+                            first-word? (and created? (zero? total))]
                         (when created?
                           (examples/create-fetch-task! word-id))
-                        {:html/body (views.home/add-success)
+                        {:html/body (views.home/add-success :first-word? first-word?)
                          :status    201}))))))}]
 
     ["/words/:id"
@@ -214,9 +217,10 @@
       :delete (fn [{:keys [dbs]}]
                 (p/do
                   (lesson/finish! dbs)
-                  {:headers   {"HX-Push-Url" "/home"}
-                   :html/body (views.home/page)
-                   :status    200}))}]
+                  (p/let [total (vocabulary/count dbs)]
+                    {:headers   {"HX-Push-Url" "/home"}
+                     :html/body (views.home/page :empty-vocab? (zero? total))
+                     :status    200})))}]
 
     ["/lesson/answer"
      {:post (fn [{:keys [dbs params]}]
