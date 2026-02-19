@@ -70,18 +70,38 @@
 
 
 (defn add-success
-  []
+  [& {:keys [first-word?]}]
   (list
    (add-form {:oob? true})
    [:div
     {:hx-swap-oob (str "beforeend:#" add-panel-id)}
     [:div
      {:hx-ext "class-tools"
-      :apply-parent-classes "add home__add--success, remove home__add--success:300ms"}]]))
+      :apply-parent-classes "add home__add--success, remove home__add--success:300ms"}]]
+   (when first-word?
+     (list
+      [:button#home-words-button.home__words-button
+       {:type        "button"
+        :hx-swap-oob "true"
+        :hx-get      "/words"
+        :hx-push-url "true"
+        :hx-swap     "innerHTML"
+        :hx-target   "#app"}
+       "Список слов"]
+      [:footer#home-lesson-footer.home__footer
+       {:hx-swap-oob "true"}
+       [:h2.home__lesson-title "Урок"]
+       [:button.home__lesson-button.big-button.green-button
+        {:hx-get       "/lesson"
+         :hx-indicator "#loader"
+         :hx-push-url  "true"
+         :hx-swap      "innerHTML"
+         :hx-target    "#app"}
+        "НАЧАТЬ УРОК"]]))))
 
 
 (defn page
-  []
+  [& {:keys [empty-vocab?]}]
   [:div.home
    [:header.home__intro
     [:h1.home__title
@@ -94,17 +114,19 @@
      [:header.home__add-header
       [:h2.home__panel-title
        "Быстрое добавление"]
-      [:button.home__words-button
-       {:type        "button"
-        :hx-get      "/words"
+      [:button#home-words-button.home__words-button
+       {:type    "button"
+        :hidden  empty-vocab?
+        :hx-get  "/words"
         :hx-push-url "true"
-        :hx-swap     "innerHTML"
+        :hx-swap "innerHTML"
         :hx-target   "#app"}
        "Список слов"]]
 
      (add-form {:oob? false})]]
 
-   [:footer.home__footer
+   [:footer#home-lesson-footer.home__footer
+    {:hidden empty-vocab?}
     [:h2.home__lesson-title
      "Урок"]
     [:button.home__lesson-button.big-button.green-button
