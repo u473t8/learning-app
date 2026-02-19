@@ -65,10 +65,33 @@
   position: fixed;
   right: 0;
   z-index: 0;
+  animation: home-footer-slide-in 300ms ease-out forwards;
+}
+
+.home__footer[hidden] {
+  display: none;
 }
 
 .home__footer .home__lesson-button.big-button {
   width: 100%;
+}
+
+@keyframes home-footer-slide-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes home-words-button-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes home-add-success-flash {
@@ -105,6 +128,7 @@
 }
 
 .home__words-button {
+  animation: home-words-button-fade-in 400ms ease-out forwards;
   background: none;
   border: 1px solid rgb(var(--color-swan));
   border-radius: 20px;
