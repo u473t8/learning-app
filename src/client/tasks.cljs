@@ -44,7 +44,7 @@
 
    Arguments:
      task - the task document (map with :task-type, :data, etc.)
-     dbs  - map with :device-db and :user-db PouchDB instances
+     dbs  - standard dbs map with :user/db, :device/db, etc.
 
    Returns a promise that resolves to:
      - truthy  -> task succeeded, will be removed
@@ -79,10 +79,10 @@
 
 
 (defn- ensure-task-index!
-  [db]
+  [dbs]
   (p/catch
     (db/create-index
-     db
+     (dbs/db-for dbs "task")
      [:type :run-at :created-at]
      {:name "by-type-run-at-created-at"
       :ddoc "by-type-run-at-created-at"})
@@ -91,82 +91,81 @@
 
 
 (defn- fetch-due-tasks
-  [db now-iso]
+  [dbs now-iso]
   (p/let [{:keys [docs]}
-          (db/find db
-                   {:selector  {:type       "task"
-                                :run-at     {:$lte now-iso}
-                                :created-at {:$exists true}
-                                :$or        [{:status {:$exists false}}
-                                             {:status {:$ne "failed"}}]}
+          (dbs/find dbs
+                    {:selector  {:type       "task"
+                                 :run-at     {:$lte now-iso}
+                                 :created-at {:$exists true}
+                                 :$or        [{:status {:$exists false}}
+                                              {:status {:$ne "failed"}}]}
 
-                    ;; Every index field in selector must appear in sort
-                    :sort      [{:type :asc}
-                                {:run-at :asc}
-                                {:created-at :asc}]
-                    :limit     page-size
-                    :use-index "by-type-run-at-created-at"})]
+                     ;; Every index field in selector must appear in sort
+                     :sort      [{:type :asc}
+                                 {:run-at :asc}
+                                 {:created-at :asc}]
+                     :limit     page-size
+                     :use-index "by-type-run-at-created-at"})]
     (vec docs)))
 
 
 (defn- mark-failed!
-  [db task]
+  [dbs task]
   (let [attempts    (inc (or (:attempts task) 0))
         next-run-ms (+ (utils/now-ms) (backoff-ms attempts))
         next-run    (utils/ms->iso next-run-ms)]
-    (db/insert db (assoc task :attempts attempts :run-at next-run))))
+    (dbs/insert dbs (assoc task :attempts attempts :run-at next-run))))
 
 
 (defn- dead-letter!
-  [db task reason]
+  [dbs task reason]
   (let [now-iso (utils/now-iso)]
-    (db/insert db
-               (assoc task
-                      :status         "failed"
-                      :failure-reason reason
-                      :failed-at      now-iso
-                      :run-at         nil))))
+    (dbs/insert dbs
+                (assoc task
+                       :status         "failed"
+                       :failure-reason reason
+                       :failed-at      now-iso
+                       :run-at         nil))))
 
 
 (defn- remove-with-latest-rev!
-  [db task]
+  [dbs task]
   (p/catch
-    (db/remove db task)
+    (dbs/remove dbs task)
     (fn [err]
       (let [status (or (:status err) (get-in err [:body :status]))]
         (cond
           (= status 404) true
-          (= status 409) (p/let [fresh (db/get db (:_id task))]
+          (= status 409) (p/let [fresh (dbs/get dbs "task" (:_id task))]
                            (if fresh
-                             (db/remove db fresh)
+                             (dbs/remove dbs fresh)
                              true))
           :else          true)))))
 
 
 (defn- run-task!
   [dbs task]
-  (let [device-db (:device-db dbs)]
-    (p/catch
-      (p/let [result (execute-task task dbs)]
-        (cond
-          (= result ::unknown-task)
-          (do
-            (log/warn :tasks/dead-letter {:id (:_id task) :reason :unknown-task})
-            (dead-letter! device-db task "unknown-task-type"))
+  (p/catch
+    (p/let [result (execute-task task dbs)]
+      (cond
+        (= result ::unknown-task)
+        (do
+          (log/warn :tasks/dead-letter {:id (:_id task) :reason :unknown-task})
+          (dead-letter! dbs task "unknown-task-type"))
 
-          result
-          (do
-            (log/debug :tasks/completed {:id (:_id task)})
-            (remove-with-latest-rev! device-db task))
+        result
+        (do
+          (log/debug :tasks/completed {:id (:_id task)})
+          (remove-with-latest-rev! dbs task))
 
-          :else
-          (do
-            (log/debug :tasks/failed {:id (:_id task)})
-            (mark-failed! device-db task))))
+        :else
+        (do
+          (log/debug :tasks/failed {:id (:_id task)})
+          (mark-failed! dbs task))))
 
-      (fn [err]
-        (log/error :tasks/error {:id (:_id task) :error (str err)})
-        (mark-failed! device-db task)))))
+    (fn [err]
+      (log/error :tasks/error {:id (:_id task) :error (str err)})
+      (mark-failed! dbs task))))
 
 
 (defn- take-next-task!
@@ -213,40 +212,39 @@
 
 (defn- nearest-retry-delay
   "Returns ms until the earliest run-at among remaining tasks, or nil."
-  [db]
+  [dbs]
   (p/let [{:keys [docs]}
-          (db/find db
-                   {:selector  {:type       "task"
-                                :run-at     {:$exists true}
-                                :created-at {:$exists true}
-                                :$or        [{:status {:$exists false}}
-                                             {:status {:$ne "failed"}}]}
-                    :sort      [{:type :asc}
-                                {:run-at :asc}
-                                {:created-at :asc}]
-                    :limit     1
-                    :use-index "by-type-run-at-created-at"})]
+          (dbs/find dbs
+                    {:selector  {:type       "task"
+                                 :run-at     {:$exists true}
+                                 :created-at {:$exists true}
+                                 :$or        [{:status {:$exists false}}
+                                              {:status {:$ne "failed"}}]}
+                     :sort      [{:type :asc}
+                                 {:run-at :asc}
+                                 {:created-at :asc}]
+                     :limit     1
+                     :use-index "by-type-run-at-created-at"})]
     (when-let [task (first docs)]
       (max 0 (- (utils/iso->ms (:run-at task)) (utils/now-ms))))))
 
 
 (defn- run-cycle!
   [dbs]
-  (let [device-db (:device-db dbs)]
-    (p/do
-      (p/loop []
-        (when (and (online?) (:enabled? @state))
-          (p/let [tasks (fetch-due-tasks device-db (utils/now-iso))]
-            (log/debug :run-cycle/tasks tasks)
-            (when (seq tasks)
-              (p/do
-                (run-workers! dbs tasks)
-                (p/recur))))))
-      ;; After processing, check if any tasks remain for retry
-      (p/let [delay (nearest-retry-delay device-db)]
-        (when delay
-          (log/debug :tasks/scheduling-retry {:delay-ms delay})
-          (schedule-retry! delay))))))
+  (p/do
+    (p/loop []
+      (when (and (online?) (:enabled? @state))
+        (p/let [tasks (fetch-due-tasks dbs (utils/now-iso))]
+          (log/debug :run-cycle/tasks tasks)
+          (when (seq tasks)
+            (p/do
+              (run-workers! dbs tasks)
+              (p/recur))))))
+    ;; After processing, check if any tasks remain for retry
+    (p/let [delay (nearest-retry-delay dbs)]
+      (when delay
+        (log/debug :tasks/scheduling-retry {:delay-ms delay})
+        (schedule-retry! delay)))))
 
 
 ;; =============================================================================
@@ -271,13 +269,12 @@
 (defn start!
   "Start the task runner."
   []
-  (let [dbs {:device-db (dbs/device-db)
-             :user-db   (dbs/user-db)}]
-    (reset! state {:enabled? true :dbs dbs})
+  (let [task-dbs (dbs/dbs)]
+    (reset! state {:enabled? true :dbs task-dbs})
 
     (log/info :tasks/starting config)
     (p/do
-      (ensure-task-index! (:device-db dbs))
+      (ensure-task-index! task-dbs)
       (flush!))))
 
 
@@ -295,8 +292,7 @@
 
 (defn create-task!
   [task-type data]
-  (let [db      (dbs/device-db)
-        now-iso (utils/now-iso)]
+  (let [now-iso (utils/now-iso)]
     (p/do
-      (db/insert db (create-task task-type data now-iso))
+      (dbs/insert (dbs/dbs) (create-task task-type data now-iso))
       (flush!))))
