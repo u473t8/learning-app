@@ -33,12 +33,12 @@
 
 
 (defn- with-test-dbs
-  "Sets up test DBs, calls (f dbs) where dbs is {:device-db ... :user-db ...}."
+  "Sets up test DBs, calls (f dbs) where dbs is {:device/db ... :user/db ...}."
   [f]
   (db-fixtures/with-test-dbs
    [test-device-db-name test-user-db-name]
    (fn [[device-db user-db]]
-     (f {:device-db device-db :user-db user-db}))))
+     (f {:device/db device-db :user/db user-db}))))
 
 
 ;; =============================================================================
@@ -98,9 +98,10 @@
   (async-testing "`save-example!` inserts correct document"
     (with-test-db
       (fn [db]
-        (let [example {:value "Der Hund" :translation "The dog" :structure []}]
+        (let [example {:value "Der Hund" :translation "The dog" :structure []}
+              dbs     {:device/db db}]
           (p/do
-            (sut/save-example! db "word-123" "Hund" example)
+            (sut/save-example! dbs "word-123" "Hund" example)
             (p/let [docs (db-queries/fetch-examples db)]
               (let [saved (first docs)]
                 (is (= 1 (count docs)))
@@ -135,7 +136,7 @@
       (fn [db]
         (p/do
           (db/insert db {:type "example" :word-id "word-123" :value "test"})
-          (p/let [result (sut/find db "word-123")]
+          (p/let [result (sut/find {:device/db db} "word-123")]
             (is (some? result))
             (is (= "word-123" (:word-id result)))))))))
 
@@ -144,7 +145,7 @@
   (async-testing "`find` returns nil when not found"
     (with-test-db
       (fn [db]
-        (p/let [result (sut/find db "nonexistent")]
+        (p/let [result (sut/find {:device/db db} "nonexistent")]
           (is (nil? result)))))))
 
 
@@ -159,7 +160,7 @@
       (fn [db]
         (p/do
           (p/let [{:keys [id]} (db/insert db {:type "example" :word-id "w1"})]
-            (sut/remove! db id)
+            (sut/remove! {:device/db db} id)
             (p/let [examples (db-queries/fetch-examples db)]
               (is (empty? examples)))))))))
 
@@ -169,7 +170,7 @@
     (with-test-db
       (fn [db]
         (p/do
-          (sut/remove! db "nonexistent")
+          (sut/remove! {:device/db db} "nonexistent")
           (p/let [examples (db-queries/fetch-examples db)]
             (is (empty? examples))))))))
 
@@ -197,15 +198,15 @@
       (set! js/fetch (fetch-mocks/mock-fetch-success example))
       (p/finally
         (with-test-dbs
-         (fn [{:keys [user-db device-db] :as dbs}]
+         (fn [dbs]
            (p/do
-             (db/insert user-db {:_id "word-123" :type "vocab" :value "Hund"})
+             (db/insert (:user/db dbs) {:_id "word-123" :type "vocab" :value "Hund"})
              (p/let [result (tasks/execute-task
                              {:task-type "example-fetch"
                               :data      {:word-id "word-123"}}
                              dbs)]
                (is (true? result))
-               (p/let [examples (db-queries/fetch-examples device-db)]
+               (p/let [examples (db-queries/fetch-examples (:device/db dbs))]
                  (is (= 1 (count examples)))
                  (is (= "Der Hund läuft" (:value (first examples)))))))))
         (fn []
@@ -218,9 +219,9 @@
       (set! js/fetch (fetch-mocks/mock-fetch-error 500))
       (p/finally
         (with-test-dbs
-         (fn [{:keys [user-db] :as dbs}]
+         (fn [dbs]
            (p/do
-             (db/insert user-db {:_id "word-123" :type "vocab" :value "Hund"})
+             (db/insert (:user/db dbs) {:_id "word-123" :type "vocab" :value "Hund"})
              (p/let [result (tasks/execute-task
                              {:task-type "example-fetch"
                               :data      {:word-id "word-123"}}

@@ -66,10 +66,11 @@
 
 
 (defn suggest
-  "Given a dictionary db and user input, returns a promise of
+  "Given a dbs map and user input, returns a promise of
    {:suggestions [...] :prefill <string-or-nil>}."
-  [db input]
-  (let [normalized (utils/normalize-german (or input ""))]
+  [dbs input]
+  (let [db         (:dictionary/db dbs)
+        normalized (utils/normalize-german (or input ""))]
     (if (empty? normalized)
       (p/resolved {:suggestions [] :prefill nil})
       (p/let [result        (db/all-docs db (build-query normalized))

@@ -10,21 +10,6 @@
 (def ^:private migration-id "migration:local-db-split")
 
 
-(def ^:private doc-type-targets
-  {"vocab"   :user
-   "review"  :user
-   "task"    :device
-   "example" :device
-   "lesson"  :device})
-
-
-(defn- resolve-db
-  [target]
-  (case target
-    :user   (dbs/user-db)
-    :device (dbs/device-db)
-    nil))
-
 
 (defn- conflict?
   [err]
@@ -71,8 +56,9 @@
         (let [local-db (dbs/local-db)]
           (log/info :db-migrations/start {:id migration-id})
           (p/do
-            (p/doseq [[doc-type target] doc-type-targets]
-              (copy-type! local-db (resolve-db target) doc-type))
+            (let [all-dbs {:user/db (dbs/user-db) :device/db device-db}]
+              (p/doseq [[doc-type db-key] dbs/doc-type->db]
+                (copy-type! local-db (all-dbs db-key) doc-type)))
             (db/insert
              device-db
              {:_id          migration-id

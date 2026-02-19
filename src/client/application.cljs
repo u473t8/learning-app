@@ -76,14 +76,10 @@
 
 
 (def db-interceptor
-  "Injects database instance into request."
+  "Injects database instances into request."
   {:name  ::db-interceptor
    :enter (fn [ctx]
-            (update ctx :request assoc
-                    :dbs           (dbs/dbs)
-                    :user-db       (dbs/user-db)
-                    :device-db     (dbs/device-db)
-                    :dictionary-db (dbs/dictionary-db)))})
+            (assoc-in ctx [:request :dbs] (dbs/dbs)))})
 
 
 (def dictionary-sync-interceptor
@@ -102,9 +98,9 @@
              {:html/body (views.home/page)})}]
 
     ["/dictionary-entries"
-     {:get (fn [{:keys [dictionary-db params]}]
+     {:get (fn [{:keys [dbs params]}]
              (-> (p/let [{:keys [suggestions prefill]}
-                         (dictionary/suggest dictionary-db (:value params))]
+                         (dictionary/suggest dbs (:value params))]
                    {:html/body (views.dictionary/suggestions suggestions prefill)
                     :status    200})
                  (p/catch

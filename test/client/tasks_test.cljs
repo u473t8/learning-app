@@ -34,7 +34,7 @@
     (db-fixtures/with-test-db
       test-db-name
       (fn [db]
-        (let [dbs {:device-db db :user-db db}]
+        (let [dbs {:device/db db :user/db db}]
           (p/with-redefs [db/use        (constantly db)
                           utils/now-ms  (constantly now-ms)
                           utils/now-iso (constantly now-iso)
@@ -149,7 +149,7 @@
 (deftest run-cycle-with-empty-queue-completes
   (async-testing "`run-cycle!` succeeds when queue is empty"
     (with-mocked-env {}
-      (fn [{:keys [device-db] :as dbs}]
+      (fn [{device-db :device/db :as dbs}]
         (p/do
           (#'sut/run-cycle! dbs)
           (p/let [docs (get-docs device-db)]
@@ -159,7 +159,7 @@
 (deftest run-cycle-removes-successful-tasks
   (async-testing "`run-cycle!` removes tasks after success"
     (with-mocked-env {}
-      (fn [{:keys [device-db] :as dbs}]
+      (fn [{device-db :device/db :as dbs}]
         (p/do
           (sut/create-task! "succeed-task" {:word-id "word-1"})
           (sut/create-task! "succeed-task" {:word-id "word-2"})
@@ -188,7 +188,7 @@
 (deftest run-cycle-marks-failed-tasks-for-retry
   (async-testing "`run-cycle!` schedules retry on failure"
     (with-mocked-env {:now-ms 1000}
-      (fn [{:keys [device-db] :as dbs}]
+      (fn [{device-db :device/db :as dbs}]
         (p/do
           (sut/create-task! "fail-task" {:word-id "word-1"})
 
@@ -204,7 +204,7 @@
 (deftest run-cycle-handles-task-exceptions
   (async-testing "`run-cycle!` catches handler exceptions"
     (with-mocked-env {:now-ms 1000}
-      (fn [{:keys [device-db] :as dbs}]
+      (fn [{device-db :device/db :as dbs}]
         (p/do
           (sut/create-task! "error-task" {:word-id "word-1"})
 
@@ -218,7 +218,7 @@
 (deftest run-cycle-dead-letters-unknown-task-types
   (async-testing "`run-cycle!` dead-letters unknown task types"
     (with-mocked-env {}
-      (fn [{:keys [device-db] :as dbs}]
+      (fn [{device-db :device/db :as dbs}]
         (p/do
           (sut/create-task! "unknown-task" {:word-id "word-1"})
           (sut/create-task! "unknown-task" {:word-id "word-2"})
@@ -233,7 +233,7 @@
 (deftest run-cycle-skips-when-offline
   (async-testing "`run-cycle!` skips processing when offline"
     (with-mocked-env {:online? false :now 1000}
-      (fn [{:keys [device-db] :as dbs}]
+      (fn [{device-db :device/db :as dbs}]
         (p/do
           (sut/create-task! "succeed-task" {:word-id "word-1"})
 
@@ -248,7 +248,7 @@
 (deftest run-cycle-reacts-to-stop-signal
   (async-testing "`run-cycle!` reacts to stop signal"
     (with-mocked-env {}
-      (fn [{:keys [device-db] :as dbs}]
+      (fn [{device-db :device/db :as dbs}]
         (p/do
           (sut/create-task! "succeed-task" {:word-id "word-1"})
 
@@ -265,7 +265,7 @@
 (deftest run-cycle-only-processes-due-tasks
   (async-testing "`run-cycle!` only processes due tasks"
     (with-mocked-env {:now-ms 1000}
-      (fn [{:keys [device-db] :as dbs}]
+      (fn [{device-db :device/db :as dbs}]
         (p/do
           ;; Future task (not due yet)
           (db/insert device-db
@@ -294,7 +294,7 @@
 (deftest create-task-triggers-immediate-execution
   (async-testing "`create-task!` triggers flush which processes the task"
     (with-mocked-env {}
-      (fn [{:keys [device-db] :as dbs}]
+      (fn [{device-db :device/db :as dbs}]
         ;; Put dbs in state so flush! can find them
         (reset! @#'sut/state {:enabled? true :dbs dbs})
         (p/do
