@@ -1,6 +1,7 @@
 (ns domain.lesson
   "Pure lesson logic - no side effects, no platform-specific code."
   (:require
+   [clojure.string :as str]
    [utils :as utils]))
 
 
@@ -37,7 +38,10 @@
   [word]
   {:type    trial-type-word
    :word-id (:_id word)
-   :prompt  (-> word :translation first :value)
+   :prompt  (->> (:translation word)
+                 (filter #(= "ru" (:lang %)))
+                 (map :value)
+                 (str/join ", "))
    :answer  (:value word)})
 
 

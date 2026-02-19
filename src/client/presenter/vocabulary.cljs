@@ -1,5 +1,7 @@
 (ns presenter.vocabulary
-  "Adapts vocabulary retrieval models for UI views.")
+  "Adapts vocabulary retrieval models for UI views."
+  (:require
+   [clojure.string :as str]))
 
 
 (defn word-item-props
@@ -10,7 +12,7 @@
    :translation (->> translation
                      (filter #(= "ru" (:lang %)))
                      (map :value)
-                     first)})
+                     (str/join ", "))})
 
 
 (defn word-list-props

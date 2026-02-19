@@ -155,10 +155,15 @@
                 (if-let [error (:error result)]
                   {:html/body (views.word/validation-error-inputs error)
                    :status    400}
-                  (p/let [word-id (vocabulary/add! dbs value translation)]
-                    (examples/create-fetch-task! word-id)
-                    {:html/body (views.home/add-success)
-                     :status    201}))))}]
+                  (p/let [result (vocabulary/add! dbs value translation)]
+                    (if (:error result)
+                      {:html/body (views.word/validation-error-inputs {:translation-blank? true})
+                       :status    400}
+                      (let [{:keys [word-id created?]} result]
+                        (when created?
+                          (examples/create-fetch-task! word-id))
+                        {:html/body (views.home/add-success)
+                         :status    201}))))))}]
 
     ["/words/:id"
      {:get    (fn [{:keys [dbs path-params params]}]
