@@ -14,7 +14,7 @@
    (find-all dbs nil kind))
   ([dbs word-id kind]
    (p/let [{docs :docs} (dbs/find-all dbs
-                                      (cond-> {:selector kind}
+                                      (cond-> {:selector {:type kind}}
                                         (some? word-id) (assoc-in [:selector :word-id] word-id)))]
      docs)))
 

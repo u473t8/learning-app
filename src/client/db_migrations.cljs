@@ -57,7 +57,7 @@
           (log/info :db-migrations/start {:id migration-id})
           (p/do
             (let [all-dbs {:user/db (dbs/user-db) :device/db device-db}]
-              (p/doseq [[doc-type db-key] dbs/doc-db-key]
+              (p/doseq [[doc-type db-key] dbs/doc-type->db]
                 (copy-type! local-db (all-dbs db-key) doc-type)))
             (db/insert
              device-db
