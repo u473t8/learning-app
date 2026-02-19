@@ -41,18 +41,11 @@
 
 (defn validate-word-update
   "Validates a word update. Returns {:ok data} or {:error details}."
-  [{:keys [word-id value translation]}]
-  (let [value-blank?       (str/blank? value)
-        translation-blank? (str/blank? translation)]
-    (cond
-      (str/blank? word-id)
-      {:error {:word-id-missing? true}}
-
-      (or value-blank? translation-blank?)
-      {:error {:value-blank? value-blank? :translation-blank? translation-blank?}}
-
-      :else
-      {:ok {:word-id word-id :value value :translation translation}})))
+  [{:keys [word-id translation]}]
+  (cond
+    (str/blank? word-id)    {:error {:word-id-missing? true}}
+    (str/blank? translation) {:error {:translation-blank? true}}
+    :else {:ok {:word-id word-id :translation translation}}))
 
 
 (defn new-word
@@ -77,11 +70,10 @@
 
 
 (defn update-word
-  "Update a vocab document with new values.
+  "Update a vocab document with new translation.
    `translation` is a scalar string that gets parsed into translation vectors."
-  [doc value translation modified-at]
+  [doc translation modified-at]
   (cond-> (assoc doc
-                 :value       value
                  :translation (parse-translations translation)
                  :modified-at modified-at)
     (nil? (:created-at doc)) (assoc :created-at modified-at)))

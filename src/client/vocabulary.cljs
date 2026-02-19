@@ -9,10 +9,24 @@
    [utils :as utils]))
 
 
+(def ^:private doc-types {:vocabs "vocab" :reviews "review" :examples "example"})
+(def ^:private doc-db    {:vocabs :user/db :reviews :user/db :examples :device/db})
+
+(defn- find-all
+  ([dbs kind]
+   (find-all dbs nil kind))
+  ([dbs word-id kind]
+   (p/let [{docs :docs} (db/find-all
+                         ((doc-db kind) dbs)
+                         (cond-> {:selector {:type (doc-types kind)}}
+                           (some? word-id) (assoc-in [:selector :word-id] word-id)))]
+     docs)))
+
+
 (defn- find-duplicate
   "Find an existing vocab doc whose normalized value matches `normalized`."
   [dbs normalized]
-  (p/let [{docs :docs} (db/find-all (:user/db dbs) {:selector {:type "vocab"}})]
+  (p/let [docs (find-all dbs :vocabs)]
     (first (filter #(= normalized (domain/normalize-value (:value %))) docs))))
 
 
@@ -53,7 +67,7 @@
   ([dbs] (list dbs {}))
   ([dbs {:keys [order limit offset search]
          :or   {order  :desc}}]
-   (p/let [{words :docs}    (db/find-all (:user/db dbs) {:selector {:type "vocab"}})
+   (p/let [words            (find-all dbs :vocabs)
            retention-levels (retention/levels dbs (mapv :_id words))]
 
      (let [total-count        (clojure/count words)
@@ -80,17 +94,17 @@
 (defn count
   "Returns the total number of vocabulary words."
   [dbs]
-  (p/let [{words :docs} (db/find-all (:user/db dbs) {:selector {:type "vocab"}})]
+  (p/let [words (find-all dbs :vocabs)]
     (clojure/count words)))
 
 
 (defn update!
-  "Updates a word's value and translation. Returns updated row, or nil if not found."
-  [dbs word-id value translation]
+  "Updates a word's translation. Returns updated row, or nil if not found."
+  [dbs word-id translation]
   (p/let [word (db/get (:user/db dbs) word-id)]
     (when word
-      (p/let [word (domain/update-word word value translation (utils/now-iso))
-              _ (db/insert (:user/db dbs) word)
+      (p/let [word (domain/update-word word translation (utils/now-iso))
+              _    (db/insert (:user/db dbs) word)
               retention-level (retention/level dbs word-id)]
         (assoc word :_id word-id :retention-level retention-level)))))
 
@@ -101,10 +115,10 @@
   [dbs word-id]
   (p/let [word (db/get (:user/db dbs) word-id)]
     (when word
-      (p/let [{reviews :docs}  (db/find-all (:user/db dbs) {:selector {:type "review" :word-id word-id}})
-              {examples :docs} (db/find-all (:user/db dbs) {:selector {:type "example" :word-id word-id}})]
+      (p/let [reviews  (find-all dbs word-id :reviews)
+              examples (find-all dbs word-id :examples)]
         (p/all (map #(db/remove (:user/db dbs) %) reviews))
-        (p/all (map #(db/remove (:user/db dbs) %) examples))
+        (p/all (map #(db/remove (:device/db dbs) %) examples))
         (db/remove (:user/db dbs) word)))))
 
 

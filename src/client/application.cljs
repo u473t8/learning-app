@@ -178,13 +178,13 @@
                       {:status 404}))))
 
       :put    (fn [{:keys [dbs path-params params]}]
-                (let [word-id (:id path-params)
-                      {:keys [value translation]} params
-                      result  (domain.vocabulary/validate-word-update
-                               {:word-id word-id :value value :translation translation})]
+                (let [word-id     (:id path-params)
+                      translation (:translation params)
+                      result      (domain.vocabulary/validate-word-update
+                                   {:word-id word-id :translation translation})]
                   (if-let [error (:error result)]
                     {:status 400 :body error}
-                    (p/let [word (vocabulary/update! dbs word-id value translation)]
+                    (p/let [word (vocabulary/update! dbs word-id translation)]
                       (if word
                         {:html/body (views.word/word-list-item
                                      (presenter.vocabulary/word-item-props word))

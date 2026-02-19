@@ -12,20 +12,21 @@
    [client.support.test :refer [async-testing]]))
 
 
-(def user-db-name (db-fixtures/db-name "client.vocabulary-test.user"))
+(def user-db-name   (db-fixtures/db-name "client.vocabulary-test.user"))
+(def device-db-name (db-fixtures/db-name "client.vocabulary-test.device"))
 
 
-(use-fixtures :each (db-fixtures/db-fixture-multi [user-db-name]))
+(use-fixtures :each (db-fixtures/db-fixture-multi [user-db-name device-db-name]))
 
 
 (defn- with-test-dbs
   [f]
   (db-fixtures/with-test-dbs
-   [user-db-name]
-   (fn [[user-db]]
+   [user-db-name device-db-name]
+   (fn [[user-db device-db]]
      (p/with-redefs [utils/now-iso time/now-iso
                      utils/now-ms  time/now-ms]
-       (f {:user/db user-db})))))
+       (f {:user/db user-db :device/db device-db})))))
 
 
 (deftest add-creates-vocab-and-initial-review
@@ -127,9 +128,9 @@
     (with-test-dbs
      (fn [dbs]
        (p/let [{:keys [word-id]} (sut/add! dbs "der Hund" "пёс")
-               result  (sut/update! dbs word-id "der Fuchs" "лиса")]
+               result            (sut/update! dbs word-id "лиса")]
          (is (= word-id (:_id result)))
-         (is (= "der Fuchs" (:value result)))
+         (is (= "der Hund" (:value result)))   ; unchanged
          (is (= "лиса" (-> result :translation first :value))))))))
 
 
@@ -141,11 +142,11 @@
          (p/let [{:keys [word-id]} (sut/add! dbs "der Hund" "пёс")]
            (p/do
              (sut/add-review dbs word-id true "пёс")
-             (db/insert (:user/db dbs) {:type "example" :word-id word-id :value "Der Hund läuft"})
+             (db/insert (:device/db dbs) {:type "example" :word-id word-id :value "Der Hund läuft"})
              (sut/delete! dbs word-id)
              (p/let [vocabs   (db-queries/fetch-by-type (:user/db dbs) "vocab")
                      reviews  (db-queries/fetch-by-type (:user/db dbs) "review")
-                     examples (db-queries/fetch-by-type (:user/db dbs) "example")]
+                     examples (db-queries/fetch-by-type (:device/db dbs) "example")]
                (is (empty? vocabs))
                (is (empty? reviews))
                (is (empty? examples))))))))))
