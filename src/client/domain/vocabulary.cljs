@@ -1,7 +1,32 @@
 (ns domain.vocabulary
   "Pure vocabulary logic extracted from IO-heavy client code."
   (:require
-   [clojure.string :as str]))
+   [clojure.string :as str]
+   [utils :as utils]))
+
+
+(defn normalize-value
+  "Normalize a word value for duplicate matching using shared German normalization."
+  [s]
+  (utils/normalize-german (str s)))
+
+
+(defn parse-translations
+  "Split a comma-separated translation string into a vector of
+   {:lang \"ru\" :value \"...\"} maps. Trims each, removes blanks."
+  [s]
+  (->> (str/split (str s) #"[,;.]")
+       (map str/trim)
+       (remove str/blank?)
+       (mapv (fn [v] {:lang "ru" :value v}))))
+
+
+(defn merge-translations
+  "Merge two translation vectors, deduplicating by :value."
+  [existing new-translations]
+  (let [seen (set (map :value existing))]
+    (into (vec existing)
+          (remove #(seen (:value %)) new-translations))))
 
 
 (defn validate-new-word
@@ -31,11 +56,12 @@
 
 
 (defn new-word
-  "Create a new vocab document from inputs."
-  [value translation created-at]
+  "Create a new vocab document from inputs.
+   `translations` is a vector of {:lang :value} maps."
+  [value translations created-at]
   {:type        "vocab"
    :value       value
-   :translation [{:lang "ru" :value translation}]
+   :translation translations
    :created-at  created-at
    :modified-at created-at})
 
@@ -51,10 +77,11 @@
 
 
 (defn update-word
-  "Update a vocab document with new values."
+  "Update a vocab document with new values.
+   `translation` is a scalar string that gets parsed into translation vectors."
   [doc value translation modified-at]
   (cond-> (assoc doc
                  :value       value
-                 :translation [{:lang "ru" :value translation}]
+                 :translation (parse-translations translation)
                  :modified-at modified-at)
     (nil? (:created-at doc)) (assoc :created-at modified-at)))

@@ -299,7 +299,7 @@
                      [:circle.sparkle {:cx 18 :cy 112 :r 2.5 :fill "hsl(280 50% 65%)" :style "animation-delay:1s;animation-duration:4.5s"}]
                      [:circle.sparkle {:cx 142 :cy 128 :r 3 :fill "hsl(280 50% 65%)" :style "animation-delay:4.2s;animation-duration:5s"}]]
                     [:div.splash-sub "Загружаем..."]]
-                   #_[:script {:src "/js/sw-loader.js" :defer true}]]
+                   [:script {:src "/js/sw-loader.js" :defer true}]]
        :status 200}
       request))
 

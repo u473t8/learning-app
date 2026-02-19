@@ -32,10 +32,11 @@
   (async-testing "`add!` creates vocab and initial review"
     (with-test-dbs
      (fn [dbs]
-       (p/let [word-id (sut/add! dbs "der Hund" "пёс")
+       (p/let [{:keys [word-id created?]} (sut/add! dbs "der Hund" "пёс")
                vocabs  (db-queries/fetch-by-type (:user/db dbs) "vocab")
                reviews (db-queries/fetch-by-type (:user/db dbs) "review")]
          (is (string? word-id))
+         (is (true? created?))
          (is (= 1 (count vocabs)))
          (is (= 1 (count reviews)))
          (is (= "der Hund" (:value (first vocabs))))
@@ -113,7 +114,7 @@
   (async-testing "`get` returns word summary"
     (with-test-dbs
      (fn [dbs]
-       (p/let [word-id (sut/add! dbs "der Hund" "пёс")
+       (p/let [{:keys [word-id]} (sut/add! dbs "der Hund" "пёс")
                result  (sut/get dbs word-id)]
          (is (= word-id (:_id result)))
          (is (= "der Hund" (:value result)))
@@ -125,7 +126,7 @@
   (async-testing "`update!` modifies and returns summary"
     (with-test-dbs
      (fn [dbs]
-       (p/let [word-id (sut/add! dbs "der Hund" "пёс")
+       (p/let [{:keys [word-id]} (sut/add! dbs "der Hund" "пёс")
                result  (sut/update! dbs word-id "der Fuchs" "лиса")]
          (is (= word-id (:_id result)))
          (is (= "der Fuchs" (:value result)))
@@ -137,7 +138,7 @@
     (with-test-dbs
      (fn [dbs]
        (p/do
-         (p/let [word-id (sut/add! dbs "der Hund" "пёс")]
+         (p/let [{:keys [word-id]} (sut/add! dbs "der Hund" "пёс")]
            (p/do
              (sut/add-review dbs word-id true "пёс")
              (db/insert (:user/db dbs) {:type "example" :word-id word-id :value "Der Hund läuft"})
@@ -155,7 +156,7 @@
     (with-test-dbs
      (fn [dbs]
        (p/do
-         (p/let [word-id (sut/add! dbs "der Hund" "пёс")]
+         (p/let [{:keys [word-id]} (sut/add! dbs "der Hund" "пёс")]
            (p/do
              (sut/add-review dbs word-id false "собака")
              (p/let [reviews (db-queries/fetch-by-type (:user/db dbs) "review")]

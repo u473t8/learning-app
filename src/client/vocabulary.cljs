@@ -9,15 +9,34 @@
    [utils :as utils]))
 
 
+(defn- find-duplicate
+  "Find an existing vocab doc whose normalized value matches `normalized`."
+  [dbs normalized]
+  (p/let [{docs :docs} (db/find-all (:user/db dbs) {:selector {:type "vocab"}})]
+    (first (filter #(= normalized (domain/normalize-value (:value %))) docs))))
+
+
 (defn add!
-  "Adds a new vocabulary word with an initial review."
+  "Adds a new vocabulary word with an initial review.
+   If a duplicate exists (case-insensitive, article-stripped), merges translations.
+   Returns {:word-id id :created? true/false}."
   [dbs value translation]
-  (let [now-iso (utils/now-iso)
-        word    (domain/new-word value translation now-iso)]
-    (p/let [{:keys [id]} (db/insert (:user/db dbs) word)
-            review       (domain/new-review id true translation now-iso)]
-      (db/insert (:user/db dbs) review)
-      id)))
+  (let [now-iso       (utils/now-iso)
+        parsed        (domain/parse-translations translation)
+        normalized    (domain/normalize-value value)]
+    (if (empty? parsed)
+      (p/resolved {:error :empty-translations})
+    (p/let [existing (find-duplicate dbs normalized)]
+      (if existing
+        (let [merged  (domain/merge-translations (:translation existing) parsed)
+              updated (assoc existing :translation merged, :modified-at now-iso)]
+          (p/let [_ (db/insert (:user/db dbs) updated)]
+            {:word-id (:_id existing) :created? false}))
+        (let [word (domain/new-word value parsed now-iso)]
+          (p/let [{:keys [id]} (db/insert (:user/db dbs) word)
+                  review       (domain/new-review id true translation now-iso)]
+            (db/insert (:user/db dbs) review)
+            {:word-id id :created? true})))))))
 
 
 (defn get

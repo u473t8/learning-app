@@ -6,7 +6,7 @@
 
 (deftest new-word-doc-creates-vocab-document
   (testing "user adds a new word"
-    (let [word (sut/new-word "der Hund" "пёс" "2024-01-01T00:00:00.000Z")]
+    (let [word (sut/new-word "der Hund" [{:lang "ru" :value "пёс"}] "2024-01-01T00:00:00.000Z")]
       (is (= "vocab" (:type word)))
       (is (= "der Hund" (:value word)))
       (is (= "пёс" (-> word :translation first :value)))
@@ -17,7 +17,7 @@
 
 (deftest update-word-doc-updates-values
   (testing "user updates an existing word"
-    (let [word    (sut/new-word "der Hund" "пёс" "2024-01-01T00:00:00.000Z")
+    (let [word    (sut/new-word "der Hund" [{:lang "ru" :value "пёс"}] "2024-01-01T00:00:00.000Z")
           updated (sut/update-word word "der Fuchs" "лиса" "2024-01-02T00:00:00.000Z")]
       (is (= "der Fuchs" (:value updated)))
       (is (= "лиса" (-> updated :translation first :value)))
