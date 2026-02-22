@@ -14,40 +14,41 @@
    [utils :as utils])
   (:require-macros [sw-version]))
 
-
 (def precache
   (sw-version/precache-manifest
    ["/"
-    "/manifest.json"
-    "/css/styles.css"
-    "/css/base/typography.css"
     "/css/base/colors.css"
     "/css/base/foundation.css"
     "/css/base/reset.css"
+    "/css/base/typography.css"
+    "/css/blocks/app-shell.css"
+    "/css/blocks/home.css"
+    "/css/blocks/lesson.css"
+    "/css/blocks/pwa-install.css"
+    "/css/blocks/vocabulary.css"
+    "/css/blocks/word-item.css"
+    "/css/blocks/word-list.css"
+    "/css/components/autocomplete.css"
     "/css/components/buttons.css"
     "/css/components/input.css"
-    "/css/components/autocomplete.css"
-    "/css/blocks/app-shell.css"
-    "/css/blocks/lesson.css"
-    "/css/blocks/home.css"
-    "/css/blocks/word-list.css"
-    "/css/blocks/word-item.css"
-    "/css/blocks/vocabulary.css"
-    "/js/word-autocomplete.js"
-    "/js/virtual-keyboard.js"
-    "/js/sw-loader.js"
-    "/fonts/Nunito/nunito-v26-cyrillic_latin-regular.woff2"
+    "/css/styles.css"
+    "/favicon.ico"
     "/fonts/Nunito/nunito-v26-cyrillic_latin-500.woff2"
     "/fonts/Nunito/nunito-v26-cyrillic_latin-600.woff2"
     "/fonts/Nunito/nunito-v26-cyrillic_latin-600italic.woff2"
     "/fonts/Nunito/nunito-v26-cyrillic_latin-700.woff2"
     "/fonts/Nunito/nunito-v26-cyrillic_latin-800.woff2"
-    "/js/htmx/htmx.min.js"
-    "/js/htmx/class-tools.js"
-    "/favicon.ico"
+    "/fonts/Nunito/nunito-v26-cyrillic_latin-regular.woff2"
     "/icons.svg"
     "/icons/ue-192.png"
-    "/icons/ue-512.png"]))
+    "/icons/ue-512.png"
+    "/js/htmx/class-tools.js"
+    "/js/htmx/htmx.min.js"
+    "/js/pwa-install.js"
+    "/js/sw-loader.js"
+    "/js/virtual-keyboard.js"
+    "/js/word-autocomplete.js"
+    "/manifest.json"]))
 
 
 (def version (:hash precache))

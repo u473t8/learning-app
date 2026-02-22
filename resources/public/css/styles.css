@@ -15,3 +15,4 @@
 @import url("./blocks/word-list.css") layer(blocks);
 @import url("./blocks/word-item.css") layer(blocks);
 @import url("./blocks/vocabulary.css") layer(blocks);
+@import url("./blocks/pwa-install.css") layer(blocks);
