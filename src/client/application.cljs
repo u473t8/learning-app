@@ -13,11 +13,12 @@
    [reitit.http.interceptors.keyword-parameters :as keyword-parameters]
    [reitit.http.interceptors.parameters :as parameters]
    [reitit.interceptor.sieppari :as sieppari]
+   [utils :as utils]
+   [views.app-install-guide :as app-install-guide]
    [views.dictionary :as views.dictionary]
    [views.home :as views.home]
    [views.lesson :as views.lesson]
    [views.vocabulary :as views.word]
-   [utils :as utils]
    [vocabulary :as vocabulary]))
 
 
@@ -44,8 +45,13 @@
      [:script {:src "/js/htmx/class-tools.js" :defer true}]
      [:script {:src "/js/word-autocomplete.js" :defer true}]
      [:script {:src "/js/virtual-keyboard.js" :defer true}]
+     [:script {:src "/js/pwa-install.js" :defer true}]
      head]
     [:body
+     [:div#loader.app-shell__loader
+      [:div.app-shell__loader-list
+       {:style {:--items-count 1}}
+       [:div.app-shell__loader-text "Загружаем..."]]]
      [:a.app-shell__logo
       {:href        "/home"
        :hx-get      "/home"
@@ -53,9 +59,11 @@
        :hx-swap     "innerHTML"
        :hx-target   "#app"}
       "Sprecha"]
-     [:div#loader.app-shell__loader
-      [:div.app-shell__loader-list {:style {:--items-count 1}}
-       [:div.app-shell__loader-text "Загружаем..."]]]
+     [:button#install-button.app-shell__install-button
+      {:hidden      true
+       :hx-on:click "htmx.trigger(window, 'app:install-requested')"}
+      "УСТАНОВИТЬ"]
+     (app-install-guide/view)
      [:div#app body]]]))
 
 
